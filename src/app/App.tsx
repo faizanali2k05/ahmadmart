@@ -11,7 +11,7 @@ import {
   Copy, ShieldCheck, Lock, RefreshCw, MessageCircle
 } from "lucide-react";
 import {
-  JAZZCASH_NUMBER, JAZZCASH_TITLE, ADMIN_PASSCODE, WHATSAPP_DISPLAY,
+  JAZZCASH_NUMBER, JAZZCASH_TITLE, ADMIN_PASSCODE, WHATSAPP_DISPLAY, WHATSAPP_NUMBER,
   ORDER_STATUSES, getOrders, saveOrder, updateOrderStatus, newOrderId,
   sendOrderEmail, whatsappOrderUrl, toWaNumber, isCashOnDelivery,
   type Order, type OrderStatus,
@@ -23,6 +23,7 @@ interface Product {
   name: string;
   price: number;
   originalPrice?: number;
+  priceNote?: string; // e.g. "per month", "onwards" — shown next to the price
   category: string;
   subcategory: string;
   image: string;
@@ -31,6 +32,7 @@ interface Product {
   reviews: number;
   badge?: "new" | "sale" | "bestseller";
   inStock: boolean;
+  isService?: boolean; // digital service — bought by contacting us on WhatsApp, not via cart
   description: string;
   specs: Record<string, string>;
 }
@@ -196,15 +198,76 @@ const PRODUCTS: Product[] = [
     description: "Ultra-slim 10000mAh power bank that fits in your pocket. Perfect for daily commutes and travel.",
     specs: { "Capacity": "10000mAh", "Thickness": "12mm", "Ports": "USB-C + USB-A", "Fast Charge": "22.5W", "LED Indicator": "4-LED", "Weight": "195g" }
   },
+  {
+    id: 13, name: "Website Development", price: 15000, priceNote: "– Rs. 30,000",
+    category: "Digital Services", subcategory: "Digital Services", isService: true,
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=400&fit=crop&auto=format",
+    images: [
+      "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&h=600&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1547658719-da2b51169166?w=600&h=600&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1551434678-e076c223a692?w=600&h=600&fit=crop&auto=format",
+    ],
+    rating: 5, reviews: 0, inStock: true,
+    description: "A complete, professional website built for your business — responsive design, fast loading, SEO-ready pages, and a contact/order flow. Final scope and price are confirmed with you directly on WhatsApp.",
+    specs: { "Price Range": "Rs. 15,000 – 30,000", "Type": "Business / Portfolio / Store", "Responsive": "Mobile + Desktop", "Delivery Time": "2–3 weeks", "Revisions": "Included", "Support": "Post-launch support" }
+  },
+  {
+    id: 14, name: "Social Media Management", price: 5000, priceNote: "per month",
+    category: "Digital Services", subcategory: "Digital Services", isService: true,
+    image: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=400&fit=crop&auto=format",
+    images: [
+      "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=600&h=600&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&h=600&fit=crop&auto=format",
+    ],
+    rating: 5, reviews: 0, inStock: true,
+    description: "We manage your social media presence — content planning, captions, scheduling, posting, and audience engagement — to grow your brand every month. Graphic design is offered as a separate service. Final package and payment details are arranged on WhatsApp.",
+    specs: { "Price": "Rs. 5,000 / month", "Platforms": "Facebook, Instagram, TikTok", "Content": "Captions + Scheduling", "Posting": "Included", "Reporting": "Monthly", "Engagement": "Comments & DMs" }
+  },
+  {
+    id: 15, name: "Ads Management", price: 15000, priceNote: "per month",
+    category: "Digital Services", subcategory: "Digital Services", isService: true,
+    image: "https://images.unsplash.com/photo-1533750516457-a7f992034fec?w=400&h=400&fit=crop&auto=format",
+    images: [
+      "https://images.unsplash.com/photo-1533750516457-a7f992034fec?w=600&h=600&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&h=600&fit=crop&auto=format",
+    ],
+    rating: 5, reviews: 0, inStock: true,
+    description: "Paid advertising managed end to end — Meta & Google ad campaigns, audience targeting, creatives, and ongoing optimisation to bring you real leads and sales. Ad budget is separate; final terms are set on WhatsApp.",
+    specs: { "Management Fee": "Rs. 15,000 / month", "Platforms": "Meta & Google Ads", "Includes": "Targeting + Creatives", "Optimisation": "Ongoing", "Reporting": "Weekly", "Ad Budget": "Billed separately" }
+  },
+  {
+    id: 16, name: "App Development", price: 100000, priceNote: "onwards",
+    category: "Digital Services", subcategory: "Digital Services", isService: true,
+    image: "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=400&h=400&fit=crop&auto=format",
+    images: [
+      "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=600&h=600&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=600&h=600&fit=crop&auto=format",
+    ],
+    rating: 5, reviews: 0, inStock: true,
+    description: "Custom Android & iOS app development tailored to your idea — the price depends on the features and category, starting from Rs. 1,00,000. Share your requirements on WhatsApp for an exact quote and timeline.",
+    specs: { "Starting Price": "Rs. 1,00,000", "Platforms": "Android & iOS", "Pricing": "Based on features", "UI / UX Design": "Included", "Timeline": "Quoted per project", "Support": "Post-launch support" }
+  },
+  {
+    id: 17, name: "Graphic Designing", price: 10000, priceNote: "– Rs. 15,000",
+    category: "Digital Services", subcategory: "Digital Services", isService: true,
+    image: "https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=400&h=400&fit=crop&auto=format",
+    images: [
+      "https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=600&h=600&fit=crop&auto=format",
+      "https://images.unsplash.com/photo-1626785774625-ddcddc3445e9?w=600&h=600&fit=crop&auto=format",
+    ],
+    rating: 5, reviews: 0, inStock: true,
+    description: "Eye-catching graphic design for your brand — logos, social media posts, banners, flyers, and a complete visual identity. Pricing depends on the scope, from Rs. 10,000 to Rs. 15,000. Share your requirements on WhatsApp for a final quote.",
+    specs: { "Price Range": "Rs. 10,000 – 15,000", "Includes": "Logos, Posts, Banners", "Formats": "PNG, JPG, PDF + Source", "Revisions": "Included", "Delivery Time": "3–7 days", "Pricing": "Based on scope" }
+  },
 ];
 
 const REVIEWS = [
-  { id: 1, name: "Zainab Fatima", city: "Karachi", rating: 5, text: "Amazing quality! The earbuds sound incredible and the packaging was so professional. Will definitely order again from Ahmad Mart.", product: "Pro Elite Wireless Earbuds", avatar: "ZF" },
-  { id: 2, name: "Muhammad Ali", city: "Lahore", rating: 5, text: "Fast delivery and the power bank is exactly as described. 20000mAh lasts me 3 full phone charges. Great value for money!", product: "20000mAh Power Bank Pro", avatar: "MA" },
-  { id: 3, name: "Ayesha Khan", city: "Islamabad", rating: 5, text: "The wall clock is absolutely gorgeous! It looks so expensive but was very affordable. My living room looks amazing now.", product: "Luxury Silent Wall Clock", avatar: "AK" },
-  { id: 4, name: "Hassan Raza", city: "Faisalabad", rating: 4, text: "Good quality cable, very durable. Been using it for 3 months with no issues. The braiding feels premium and strong.", product: "Braided USB-C Cable", avatar: "HR" },
-  { id: 5, name: "Sana Mirza", city: "Multan", rating: 5, text: "Excellent customer service and the phone case fits perfectly. The clear design shows off my phone beautifully!", product: "Clear Armor Phone Case", avatar: "SM" },
-  { id: 6, name: "Bilal Ahmed", city: "Rawalpindi", rating: 5, text: "The 65W charger is incredible — charges my laptop AND phone at the same time! Worth every rupee.", product: "65W GaN Fast Charger", avatar: "BA" },
+  { id: 1, name: "Abis Faheem", city: "Karachi", rating: 5, text: "The Losse Pro 2 earbuds sound absolutely incredible — crisp highs, deep bass, and the battery lasts all day. Premium packaging too. Best purchase from Ahmad Mart!", product: "Losse Pro 2 Earbuds", avatar: "AF" },
+  { id: 2, name: "Muzamil Ajmal", city: "Lahore", rating: 5, text: "Fast delivery and exactly what I expected. The quality is genuinely impressive and the whole ordering process was smooth. Will definitely shop from Ahmad Mart again!", product: "", avatar: "MA" },
+  { id: 3, name: "Faizan Ali", city: "Islamabad", rating: 5, text: "Top-notch quality and the packaging was neat and professional. The team replied instantly on WhatsApp and sorted everything out. Highly recommended!", product: "", avatar: "FA" },
+  { id: 4, name: "Usama Maher", city: "Faisalabad", rating: 4, text: "Great value for money. My order arrived right on time and in perfect condition. I've been a happy customer for months now.", product: "", avatar: "UM" },
+  { id: 5, name: "Hafsa Chaudhry", city: "Multan", rating: 5, text: "Excellent service from start to finish. The team is super responsive and everything I've ordered feels premium. Couldn't be happier!", product: "", avatar: "HC" },
+  { id: 6, name: "Farooq Alamdar", city: "Rawalpindi", rating: 5, text: "A reliable store with honest pricing. My order was confirmed quickly on WhatsApp and delivered fast. Trustworthy and professional!", product: "", avatar: "FA" },
 ];
 
 const CATEGORIES = [
@@ -212,8 +275,7 @@ const CATEGORIES = [
   { name: "Chargers", icon: Zap, subcategory: "Chargers", color: "#F97316", bg: "#FFF7ED" },
   { name: "Power Banks", icon: Battery, subcategory: "Power Banks", color: "#059669", bg: "#ECFDF5" },
   { name: "Data Cables", icon: Plug, subcategory: "Data Cables", color: "#7C3AED", bg: "#F5F3FF" },
-  { name: "Mobile Holders", icon: Smartphone, subcategory: "Mobile Holders", color: "#DC2626", bg: "#FEF2F2" },
-  { name: "Mobile Cases", icon: Shield, subcategory: "Mobile Cases", color: "#0891B2", bg: "#ECFEFF" },
+  { name: "Digital Services", icon: Wifi, subcategory: "Digital Services", color: "#0891B2", bg: "#ECFEFF" },
   { name: "Wall Clocks", icon: Clock, subcategory: "Wall Clocks", color: "#B45309", bg: "#FFFBEB" },
 ];
 
@@ -261,6 +323,13 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => `Rs. ${n.toLocaleString()}`;
 const discount = (orig: number, curr: number) => Math.round((1 - curr / orig) * 100);
+
+/** wa.me link to enquire about a digital service — pricing/payment is finalised on chat. */
+const serviceWhatsAppUrl = (p: Product) => {
+  const price = `${fmt(p.price)}${p.priceNote ? ` ${p.priceNote}` : ""}`;
+  const text = `Hi Ahmad Mart 👋, I'm interested in your *${p.name}* service (${price}). Please share the final price, payment details, and next steps.`;
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+};
 
 function Stars({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
@@ -329,23 +398,39 @@ function ProductCardBase({ product }: { product: Product }) {
       <div className="p-4">
         <p className="text-xs text-[#F97316] font-semibold mb-1">{product.subcategory}</p>
         <h3 className="font-semibold text-[#111827] text-sm leading-snug mb-2 line-clamp-2 group-hover:text-[#1E40AF] transition-colors">{product.name}</h3>
-        <div className="flex items-center gap-2 mb-3">
-          <Stars rating={product.rating} />
-          <span className="text-xs text-gray-400">({product.reviews})</span>
-        </div>
+        {!product.isService && (
+          <div className="flex items-center gap-2 mb-3">
+            <Stars rating={product.rating} />
+            <span className="text-xs text-gray-400">({product.reviews})</span>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-base font-bold text-[#1E40AF]">{fmt(product.price)}</p>
             {product.originalPrice && <p className="text-xs text-gray-400 line-through">{fmt(product.originalPrice)}</p>}
+            {product.priceNote && <p className="text-[11px] text-[#6b7280] font-medium">{product.priceNote}</p>}
           </div>
-          <button
-            onClick={handleAdd}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-95 ${adding ? "bg-emerald-500 text-white" : "bg-[#1E40AF] text-white hover:bg-[#1e3a8a]"}`}
-            style={{ boxShadow: adding ? "0 4px 12px rgba(16,185,129,0.4)" : "0 4px 12px rgba(30,64,175,0.3)" }}
-          >
-            {adding ? <CheckCircle size={13} /> : <ShoppingCart size={13} />}
-            {adding ? "Added!" : "Add"}
-          </button>
+          {product.isService ? (
+            <a
+              href={serviceWhatsAppUrl(product)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all duration-200 active:scale-95"
+              style={{ background: "#25D366", boxShadow: "0 4px 12px rgba(37,211,102,0.35)" }}
+            >
+              <MessageCircle size={13} /> Chat
+            </a>
+          ) : (
+            <button
+              onClick={handleAdd}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-95 ${adding ? "bg-emerald-500 text-white" : "bg-[#1E40AF] text-white hover:bg-[#1e3a8a]"}`}
+              style={{ boxShadow: adding ? "0 4px 12px rgba(16,185,129,0.4)" : "0 4px 12px rgba(30,64,175,0.3)" }}
+            >
+              {adding ? <CheckCircle size={13} /> : <ShoppingCart size={13} />}
+              {adding ? "Added!" : "Add"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -382,15 +467,26 @@ function Navbar() {
     { label: "Shop", to: "/shop" },
     { label: "Mobile Accessories", to: "/shop?cat=Mobile Accessories" },
     { label: "Wall Clocks", to: "/shop?cat=Home Decoration" },
+    { label: "Digital Services", to: "/shop?cat=Digital Services" },
   ];
 
   return (
     <>
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "shadow-lg" : ""}`}
         style={{ background: scrolled ? "rgba(255,255,255,0.97)" : "#fff", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(30,64,175,0.08)" }}>
-        {/* Top bar */}
-        <div className="bg-[#1E40AF] text-white text-xs py-1.5 text-center font-medium">
-          🚚 Free delivery on orders above Rs. 2,000 | Easy JazzCash Payment Across Pakistan
+        {/* Top bar — continuously scrolling announcement */}
+        <div className="bg-[#1E40AF] text-white text-xs py-1.5 overflow-hidden">
+          <div className="flex w-max animate-marquee">
+            {[0, 1].map(group => (
+              <div key={group} className="flex shrink-0" aria-hidden={group === 1}>
+                {[0, 1, 2, 3].map(i => (
+                  <span key={i} className="px-8 font-medium whitespace-nowrap">
+                    🚚 Free delivery on orders above Rs. 2,000 | Easy JazzCash Payment Across Pakistan
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -691,11 +787,11 @@ function HomePage() {
           ))}
         </div>
         <button onClick={() => setActiveSlide(s => (s - 1 + slides.length) % slides.length)}
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors z-20">
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 hidden sm:flex items-center justify-center text-white hover:bg-white/30 transition-colors z-20">
           <ChevronLeft size={18} />
         </button>
         <button onClick={() => setActiveSlide(s => (s + 1) % slides.length)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors z-20">
+          className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 hidden sm:flex items-center justify-center text-white hover:bg-white/30 transition-colors z-20">
           <ChevronRight size={18} />
         </button>
       </section>
@@ -852,7 +948,7 @@ function HomePage() {
                   <div className="ml-auto"><Stars rating={r.rating} size={12} /></div>
                 </div>
                 <p className="text-[#374151] text-sm leading-relaxed mb-3">"{r.text}"</p>
-                <p className="text-xs text-[#1E40AF] font-semibold">{r.product}</p>
+                {r.product && <p className="text-xs text-[#1E40AF] font-semibold">{r.product}</p>}
               </div>
             ))}
           </div>
@@ -882,14 +978,15 @@ function ShopPage() {
     if (p.get("sub")) setSubcategory(p.get("sub") || "All");
   }, [location.search]);
 
-  const cats = ["All", "Mobile Accessories", "Home Decoration"];
+  const cats = ["All", "Mobile Accessories", "Home Decoration", "Digital Services"];
   const subs = ["All", ...CATEGORIES.map(c => c.subcategory)];
 
   let filtered = PRODUCTS.filter(p => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.subcategory.toLowerCase().includes(search.toLowerCase());
     const matchCat = category === "All" || p.category === category;
     const matchSub = subcategory === "All" || p.subcategory === subcategory;
-    const matchPrice = p.price >= minPrice && p.price <= maxPrice;
+    // Services use "starting from" / "per month" pricing, so the price slider never hides them.
+    const matchPrice = p.isService || (p.price >= minPrice && p.price <= maxPrice);
     return matchSearch && matchCat && matchSub && matchPrice;
   });
 
@@ -1014,6 +1111,7 @@ function ProductDetailPage() {
       addRecentlyViewed(product);
       setActiveImg(0);
       setQty(1);
+      setTab("desc");
     }
   }, [id]);
 
@@ -1080,15 +1178,16 @@ function ProductDetailPage() {
           <h1 className="text-2xl sm:text-3xl font-black text-[#111827] mb-3 leading-tight">{product.name}</h1>
 
           <div className="flex items-center gap-3 mb-4">
-            <Stars rating={product.rating} size={16} />
-            <span className="text-sm text-[#6b7280]">({product.reviews} reviews)</span>
+            {!product.isService && <Stars rating={product.rating} size={16} />}
+            {!product.isService && <span className="text-sm text-[#6b7280]">({product.reviews} reviews)</span>}
             <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${product.inStock ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-              {product.inStock ? "In Stock" : "Out of Stock"}
+              {product.inStock ? (product.isService ? "Available" : "In Stock") : "Out of Stock"}
             </span>
           </div>
 
           <div className="flex items-baseline gap-3 mb-6">
             <span className="text-3xl font-black text-[#1E40AF]">{fmt(product.price)}</span>
+            {product.priceNote && <span className="text-base font-semibold text-[#6b7280]">{product.priceNote}</span>}
             {product.originalPrice && (
               <>
                 <span className="text-lg text-gray-400 line-through">{fmt(product.originalPrice)}</span>
@@ -1101,7 +1200,26 @@ function ProductDetailPage() {
 
           <p className="text-[#374151] text-sm leading-relaxed mb-6">{product.description}</p>
 
-          {/* Qty + Actions */}
+          {/* Qty + Actions / Service contact */}
+          {product.isService ? (
+            <div className="mb-6">
+              <div className="flex items-stretch gap-3">
+                <a href={serviceWhatsAppUrl(product)} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-black text-sm transition-transform active:scale-95"
+                  style={{ background: "#25D366", boxShadow: "0 4px 16px rgba(37,211,102,0.35)" }}>
+                  <MessageCircle size={18} /> Contact on WhatsApp
+                </a>
+                <button onClick={() => toggleWishlist(product)}
+                  className={`w-11 rounded-xl flex items-center justify-center border-2 transition-all active:scale-95 ${inWishlist(product.id) ? "border-red-300 bg-red-50" : "border-gray-200 hover:border-red-300"}`}>
+                  <Heart size={18} className={inWishlist(product.id) ? "fill-red-500 text-red-500" : "text-gray-400"} />
+                </button>
+              </div>
+              <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-4 flex items-start gap-2.5">
+                <MessageCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-green-800">This is a custom digital service. Contact us directly on WhatsApp <strong className="whitespace-nowrap">{WHATSAPP_DISPLAY}</strong> to confirm the final price, make the payment, and discuss all other details.</p>
+              </div>
+            </div>
+          ) : (
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <div className="flex items-center rounded-xl overflow-hidden border border-gray-200"
               style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
@@ -1131,14 +1249,22 @@ function ProductDetailPage() {
               <Heart size={18} className={inWishlist(product.id) ? "fill-red-500 text-red-500" : "text-gray-400"} />
             </button>
           </div>
+          )}
 
           {/* Assurances */}
           <div className="grid grid-cols-3 gap-3">
-            {[
-              { icon: Truck, text: "Free Delivery" },
-              { icon: RotateCcw, text: "7-Day Return" },
-              { icon: Shield, text: "Secure Pay" },
-            ].map(({ icon: Icon, text }) => (
+            {(product.isService
+              ? [
+                  { icon: MessageCircle, text: "Direct Support" },
+                  { icon: ShieldCheck, text: "Custom Quote" },
+                  { icon: CheckCircle, text: "Pay on WhatsApp" },
+                ]
+              : [
+                  { icon: Truck, text: "Free Delivery" },
+                  { icon: RotateCcw, text: "7-Day Return" },
+                  { icon: Shield, text: "Secure Pay" },
+                ]
+            ).map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-center gap-2 p-3 bg-[#F8F9FB] rounded-xl">
                 <Icon size={14} className="text-[#1E40AF] flex-shrink-0" />
                 <span className="text-xs font-semibold text-[#374151]">{text}</span>
@@ -1151,7 +1277,7 @@ function ProductDetailPage() {
       {/* Tabs */}
       <div className="bg-white rounded-2xl mb-10" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
         <div className="flex border-b border-gray-100">
-          {(["desc", "specs", "reviews"] as const).map(t => {
+          {(["desc", "specs", "reviews"] as const).filter(t => !(product.isService && t === "reviews")).map(t => {
             const labels = { desc: "Description", specs: "Specifications", reviews: `Reviews (${product.reviews})` };
             return (
               <button key={t} onClick={() => setTab(t)}
