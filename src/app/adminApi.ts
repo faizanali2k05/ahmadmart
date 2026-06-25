@@ -1,0 +1,51 @@
+// Frontend client for the Neon-backed product API (Vercel serverless functions).
+// Admin writes are authorized by the logged-in admin's Bearer token (the user
+// must have role "admin"). All calls degrade gracefully when the API is
+// unreachable (e.g. local `vite` dev), so the storefront still works.
+import type { Product } from "./types";
+import { getToken } from "./auth";
+
+async function send(url: string, method: string, body?: unknown) {
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
+  return data;
+}
+
+/** Load the live catalog from the database. Throws if the API is unavailable. */
+export async function fetchProducts(): Promise<Product[]> {
+  const res = await fetch("/api/products", { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to load products (${res.status})`);
+  const data = (await res.json()) as { products: Product[] };
+  return data.products;
+}
+
+export async function createProduct(p: Partial<Product>): Promise<Product> {
+  return (await send("/api/admin/products", "POST", p)).product;
+}
+export async function updateProduct(p: Partial<Product>): Promise<Product> {
+  return (await send("/api/admin/products", "PUT", p)).product;
+}
+export async function deleteProduct(id: number): Promise<void> {
+  await send("/api/admin/products", "DELETE", { id });
+}
+
+export interface Analytics {
+  totals: {
+    total: number; in_stock: number; out_of_stock: number; services: number;
+    discounted: number; inventory_value: number; avg_price: number;
+  };
+  byCategory: { category: string; count: number; value: number }[];
+  bySubcategory: { subcategory: string; count: number }[];
+}
+export async function fetchAnalytics(): Promise<Analytics> {
+  return (await send("/api/admin/analytics", "GET")) as Analytics;
+}
+
+export async function seedProducts(products: Product[], force = false): Promise<{ seeded: number; skipped?: boolean; message?: string }> {
+  return (await send("/api/admin/seed", "POST", { products, force })) as { seeded: number };
+}

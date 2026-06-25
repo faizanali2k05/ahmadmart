@@ -1,0 +1,19 @@
+// Shared product type used by the storefront, the admin panel, and the API client.
+export interface Product {
+  id: number;
+  name: string;
+  price: number;
+  originalPrice?: number;
+  priceNote?: string; // e.g. "per month", "onwards" — shown next to the price
+  category: string;
+  subcategory: string;
+  image: string;
+  images: string[];
+  rating: number;
+  reviews: number;
+  badge?: "new" | "sale" | "bestseller";
+  inStock: boolean;
+  isService?: boolean; // digital service — bought by contacting us on WhatsApp, not via cart
+  description: string;
+  specs: Record<string, string>;
+}

@@ -22,29 +22,23 @@ import {
 } from "./reviewStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-  originalPrice?: number;
-  priceNote?: string; // e.g. "per month", "onwards" — shown next to the price
-  category: string;
-  subcategory: string;
-  image: string;
-  images: string[];
-  rating: number;
-  reviews: number;
-  badge?: "new" | "sale" | "bestseller";
-  inStock: boolean;
-  isService?: boolean; // digital service — bought by contacting us on WhatsApp, not via cart
-  description: string;
-  specs: Record<string, string>;
-}
+import type { Product } from "./types";
+import {
+  fetchProducts as apiFetchProducts, createProduct as apiCreateProduct,
+  updateProduct as apiUpdateProduct, deleteProduct as apiDeleteProduct,
+  fetchAnalytics, seedProducts, type Analytics,
+} from "./adminApi";
+import {
+  apiLogin, apiSignup, apiMe, apiChangeRole,
+  setToken, clearToken, type AuthUser, type Role,
+} from "./auth";
 
 interface CartItem extends Product { qty: number; }
 interface WishlistItem extends Product {}
 
 interface StoreCtx {
+  products: Product[];
+  refreshProducts: () => Promise<void>;
   cart: CartItem[];
   wishlist: WishlistItem[];
   addToCart: (p: Product, qty?: number) => void;
@@ -55,8 +49,11 @@ interface StoreCtx {
   inWishlist: (id: number) => boolean;
   cartCount: number;
   cartTotal: number;
-  user: { name: string; email: string } | null;
-  login: (name: string, email: string) => void;
+  user: AuthUser | null;
+  authReady: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string, role: Role) => Promise<void>;
+  changeRole: (role: Role) => Promise<void>;
   logout: () => void;
   recentlyViewed: Product[];
   addRecentlyViewed: (p: Product) => void;
@@ -64,8 +61,10 @@ interface StoreCtx {
 
 const Store = createContext<StoreCtx>({} as StoreCtx);
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const PRODUCTS: Product[] = [
+// ─── Seed catalog ─────────────────────────────────────────────────────────────
+// Built-in products. These are the fallback when the database API is unavailable,
+// and the data the "Seed database" button in the admin panel imports into Neon.
+const SEED_PRODUCTS: Product[] = [
   {
     id: 18, name: "White Losse Pro 2 (Without Box)", price: 849, originalPrice: 1000,
     category: "Mobile Accessories", subcategory: "Earbuds",
@@ -355,8 +354,27 @@ const CATEGORIES = [
 function StoreProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
-  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [recentlyViewed, setRecentlyViewed] = useState<Product[]>([]);
+
+  // Restore the session from a stored token on load.
+  useEffect(() => {
+    apiMe().then(u => setUser(u)).catch(() => {}).finally(() => setAuthReady(true));
+  }, []);
+  // Products come from the Neon-backed API. We start from the built-in seed so the
+  // store renders instantly and still works if the API/database is unavailable.
+  const [products, setProducts] = useState<Product[]>(SEED_PRODUCTS);
+
+  const refreshProducts = useCallback(async () => {
+    try {
+      const live = await apiFetchProducts();
+      if (Array.isArray(live) && live.length) setProducts(live);
+    } catch {
+      /* API/database not available — keep the seed catalog. */
+    }
+  }, []);
+  useEffect(() => { refreshProducts(); }, [refreshProducts]);
 
   const addToCart = useCallback((p: Product, qty = 1) => {
     setCart(prev => {
@@ -377,17 +395,29 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
   const inWishlist = useCallback((id: number) => wishlist.some(i => i.id === id), [wishlist]);
   const cartCount = useMemo(() => cart.reduce((s, i) => s + i.qty, 0), [cart]);
   const cartTotal = useMemo(() => cart.reduce((s, i) => s + i.price * i.qty, 0), [cart]);
-  const login = useCallback((name: string, email: string) => setUser({ name, email }), []);
-  const logout = useCallback(() => setUser(null), []);
+  const login = useCallback(async (email: string, password: string) => {
+    const { token, user } = await apiLogin(email, password);
+    setToken(token); setUser(user);
+  }, []);
+  const signup = useCallback(async (name: string, email: string, password: string, role: Role) => {
+    const { token, user } = await apiSignup(name, email, password, role);
+    setToken(token); setUser(user);
+  }, []);
+  const changeRole = useCallback(async (role: Role) => {
+    const { token, user } = await apiChangeRole(role);
+    setToken(token); setUser(user);
+  }, []);
+  const logout = useCallback(() => { clearToken(); setUser(null); }, []);
   const addRecentlyViewed = useCallback((p: Product) => {
     setRecentlyViewed(prev => [p, ...prev.filter(i => i.id !== p.id)].slice(0, 6));
   }, []);
 
   const value = useMemo(() => ({
+    products, refreshProducts,
     cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
-    cartCount, cartTotal, user, login, logout, recentlyViewed, addRecentlyViewed,
-  }), [cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
-    cartCount, cartTotal, user, login, logout, recentlyViewed, addRecentlyViewed]);
+    cartCount, cartTotal, user, authReady, login, signup, changeRole, logout, recentlyViewed, addRecentlyViewed,
+  }), [products, refreshProducts, cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
+    cartCount, cartTotal, user, authReady, login, signup, changeRole, logout, recentlyViewed, addRecentlyViewed]);
 
   return <Store.Provider value={value}>{children}</Store.Provider>;
 }
@@ -771,6 +801,7 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
 // ─── Home Page ────────────────────────────────────────────────────────────────
 function HomePage() {
   const navigate = useNavigate();
+  const { products } = useContext(Store);
   const [activeSlide, setActiveSlide] = useState(0);
 
   const slides = [
@@ -802,10 +833,10 @@ function HomePage() {
     return () => clearInterval(t);
   }, []);
 
-  const featured = PRODUCTS.filter(p => p.badge === "bestseller" || p.badge === "new").slice(0, 4);
-  const bestsellers = PRODUCTS.sort((a, b) => b.reviews - a.reviews).slice(0, 8);
-  const mobileAcc = PRODUCTS.filter(p => p.category === "Mobile Accessories").slice(0, 4);
-  const clocks = PRODUCTS.filter(p => p.subcategory === "Wall Clocks");
+  const featured = products.filter(p => p.badge === "bestseller" || p.badge === "new").slice(0, 4);
+  const bestsellers = [...products].sort((a, b) => b.reviews - a.reviews).slice(0, 8);
+  const mobileAcc = products.filter(p => p.category === "Mobile Accessories").slice(0, 4);
+  const clocks = products.filter(p => p.subcategory === "Wall Clocks");
 
   return (
     <div>
@@ -1036,6 +1067,7 @@ function HomePage() {
 
 // ─── Shop Page ────────────────────────────────────────────────────────────────
 function ShopPage() {
+  const { products } = useContext(Store);
   const [searchParams] = useState(() => new URLSearchParams(window.location.search));
   const [search, setSearch] = useState(searchParams.get("q") || "");
   const [category, setCategory] = useState(searchParams.get("cat") || "All");
@@ -1056,7 +1088,7 @@ function ShopPage() {
   const cats = ["All", "Mobile Accessories", "Home Decoration", "Digital Services"];
   const subs = ["All", ...CATEGORIES.map(c => c.subcategory)];
 
-  let filtered = PRODUCTS.filter(p => {
+  let filtered = products.filter(p => {
     const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.subcategory.toLowerCase().includes(search.toLowerCase());
     const matchCat = category === "All" || p.category === category;
     const matchSub = subcategory === "All" || p.subcategory === subcategory;
@@ -1308,14 +1340,14 @@ function ReviewSection({ productId }: { productId: number }) {
 // ─── Product Detail Page ──────────────────────────────────────────────────────
 function ProductDetailPage() {
   const { id } = useParams();
-  const { addToCart, toggleWishlist, inWishlist, addRecentlyViewed } = useContext(Store);
+  const { products, addToCart, toggleWishlist, inWishlist, addRecentlyViewed } = useContext(Store);
   const [qty, setQty] = useState(1);
   const [activeImg, setActiveImg] = useState(0);
   const [tab, setTab] = useState<"desc" | "specs" | "reviews">("desc");
   const [added, setAdded] = useState(false);
   const navigate = useNavigate();
 
-  const product = PRODUCTS.find(p => p.id === Number(id));
+  const product = products.find(p => p.id === Number(id));
 
   useEffect(() => {
     if (product) {
@@ -1334,7 +1366,7 @@ function ProductDetailPage() {
     </div>
   );
 
-  const related = PRODUCTS.filter(p => p.subcategory === product.subcategory && p.id !== product.id).slice(0, 4);
+  const related = products.filter(p => p.subcategory === product.subcategory && p.id !== product.id).slice(0, 4);
 
   const handleAddToCart = () => {
     addToCart(product, qty);
@@ -2087,13 +2119,20 @@ function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.email || !form.password) { setErr("Please fill in all fields"); return; }
-    login("Customer", form.email);
-    navigate("/account");
+    setBusy(true); setErr("");
+    try {
+      await login(form.email.trim(), form.password);
+      navigate("/account");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not sign in. Please try again.");
+    }
+    setBusy(false);
   };
 
   return (
@@ -2131,10 +2170,10 @@ function LoginPage() {
               </label>
               <a href="#" className="text-xs text-[#1E40AF] font-semibold hover:text-[#F97316]">Forgot password?</a>
             </div>
-            <button type="submit"
-              className="w-full py-3.5 rounded-xl bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95"
+            <button type="submit" disabled={busy}
+              className="w-full py-3.5 rounded-xl bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
               style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
-              Sign In
+              {busy ? "Signing in…" : "Sign In"}
             </button>
           </form>
           <p className="text-center text-sm text-[#6b7280] mt-6">
@@ -2149,19 +2188,26 @@ function LoginPage() {
 
 // ─── Register Page ────────────────────────────────────────────────────────────
 function RegisterPage() {
-  const { login } = useContext(Store);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
+  const { signup } = useContext(Store);
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "", role: "buyer" as Role });
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.password) { setErr("Please fill in all required fields"); return; }
     if (form.password !== form.confirm) { setErr("Passwords do not match"); return; }
-    if (form.password.length < 8) { setErr("Password must be at least 8 characters"); return; }
-    login(form.name, form.email);
-    navigate("/account");
+    if (form.password.length < 6) { setErr("Password must be at least 6 characters"); return; }
+    setBusy(true); setErr("");
+    try {
+      await signup(form.name.trim(), form.email.trim(), form.password, form.role);
+      navigate("/account");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not create account. Please try again.");
+    }
+    setBusy(false);
   };
 
   return (
@@ -2190,7 +2236,7 @@ function RegisterPage() {
               <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Password</label>
               <div className="relative">
                 <input type={showPw ? "text" : "password"} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  placeholder="Min. 8 characters"
+                  placeholder="Min. 6 characters"
                   className="w-full px-4 py-3 pr-11 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
                 <button type="button" onClick={() => setShowPw(s => !s)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
@@ -2204,11 +2250,30 @@ function RegisterPage() {
                 placeholder="Repeat your password"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
             </div>
+            <div>
+              <label className="text-sm font-semibold text-[#374151] mb-1.5 block">I want to join as</label>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { v: "buyer", t: "Buyer", d: "Shop and order products" },
+                  { v: "seller", t: "Seller", d: "List and sell products" },
+                ] as const).map(o => (
+                  <button key={o.v} type="button" onClick={() => setForm(f => ({ ...f, role: o.v }))}
+                    className={`text-left rounded-xl border-2 p-3 transition-all ${form.role === o.v ? "border-[#1E40AF] bg-blue-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
+                    <span className="flex items-center justify-between mb-0.5">
+                      <span className="font-bold text-[#111827] text-sm">{o.t}</span>
+                      <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${form.role === o.v ? "border-[#1E40AF] bg-[#1E40AF]" : "border-gray-300"}`} />
+                    </span>
+                    <span className="text-xs text-[#6b7280]">{o.d}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-[#6b7280] mt-1.5">You can change this anytime in your profile.</p>
+            </div>
             {err && <p className="text-xs text-red-500 font-semibold">{err}</p>}
-            <button type="submit"
-              className="w-full py-3.5 rounded-xl bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95"
+            <button type="submit" disabled={busy}
+              className="w-full py-3.5 rounded-xl bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
               style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
-              Create Account
+              {busy ? "Creating account…" : "Create Account"}
             </button>
           </form>
           <p className="text-center text-sm text-[#6b7280] mt-6">
@@ -2223,9 +2288,19 @@ function RegisterPage() {
 
 // ─── Account Page ─────────────────────────────────────────────────────────────
 function AccountPage() {
-  const { user, logout, cart, wishlist } = useContext(Store);
+  const { user, logout, changeRole, cart, wishlist } = useContext(Store);
   const navigate = useNavigate();
   const [tab, setTab] = useState<"profile" | "orders" | "wishlist">("profile");
+  const [roleBusy, setRoleBusy] = useState(false);
+  const [roleMsg, setRoleMsg] = useState("");
+  const [roleErr, setRoleErr] = useState("");
+  const switchRole = async (r: Role) => {
+    if (!user || user.role === r) return;
+    setRoleBusy(true); setRoleMsg(""); setRoleErr("");
+    try { await changeRole(r); setRoleMsg(`You are now registered as a ${r}.`); }
+    catch (e) { setRoleErr(e instanceof Error ? e.message : "Could not change role."); }
+    setRoleBusy(false);
+  };
 
   if (!user) {
     return (
@@ -2311,18 +2386,41 @@ function AccountPage() {
                 {[
                   { label: "Full Name", value: user.name },
                   { label: "Email Address", value: user.email },
-                  { label: "Phone Number", value: "+92 300 1234567" },
-                  { label: "City", value: "Multan, Pakistan" },
                 ].map(({ label, value }) => (
                   <div key={label}>
                     <label className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1 block">{label}</label>
                     <div className="px-4 py-3 rounded-xl bg-[#F8F9FB] text-sm font-semibold text-[#111827]">{value}</div>
                   </div>
                 ))}
-                <button className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm"
-                  style={{ boxShadow: "0 4px 12px rgba(30,64,175,0.3)" }}>
-                  Edit Profile
-                </button>
+                <div>
+                  <label className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1 block">Account Type</label>
+                  <div className="px-4 py-3 rounded-xl bg-[#F8F9FB] text-sm font-semibold text-[#111827] capitalize flex items-center gap-2">
+                    {user.role}
+                    {user.role === "admin" && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1E40AF] text-white uppercase tracking-wide">Admin</span>}
+                  </div>
+                </div>
+
+                {user.role === "admin" ? (
+                  <Link to="/admin" className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm"
+                    style={{ boxShadow: "0 4px 12px rgba(30,64,175,0.3)" }}>
+                    <ShieldCheck size={16} /> Go to Admin Dashboard
+                  </Link>
+                ) : (
+                  <div>
+                    <label className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1.5 block">Switch Role</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(["buyer", "seller"] as const).map(r => (
+                        <button key={r} type="button" onClick={() => switchRole(r)} disabled={roleBusy || user.role === r}
+                          className={`rounded-xl border-2 p-3 text-sm font-bold capitalize transition-all disabled:cursor-default ${user.role === r ? "border-[#1E40AF] bg-blue-50/60 text-[#1E40AF]" : "border-gray-200 text-[#374151] hover:border-gray-300"}`}>
+                          {r}{user.role === r && " · current"}
+                        </button>
+                      ))}
+                    </div>
+                    {roleMsg && <p className="text-xs mt-1.5 font-semibold text-emerald-600">{roleMsg}</p>}
+                    {roleErr && <p className="text-xs mt-1.5 font-semibold text-red-500">{roleErr}</p>}
+                    <p className="text-[11px] text-[#6b7280] mt-1.5">Buyers shop and order; sellers can list products (seller tools coming soon).</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2379,70 +2477,293 @@ const STATUS_STYLE: Record<OrderStatus, { bg: string; text: string }> = {
   "Cancelled": { bg: "#FEF2F2", text: "#B91C1C" },
 };
 
-function AdminPage() {
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("ahmadmart_admin") === "1");
-  const [pass, setPass] = useState("");
-  const [passErr, setPassErr] = useState("");
-  const [orders, setOrders] = useState<Order[]>([]);
+// ─── Admin: Analytics dashboard ───────────────────────────────────────────────
+function AdminAnalytics({ dbMode }: { dbMode: boolean }) {
+  const [data, setData] = useState<Analytics | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!dbMode) return;
+    fetchAnalytics().then(setData).catch(e => setErr(e.message || "Failed to load analytics"));
+  }, [dbMode]);
+  if (!dbMode) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-[#6b7280]" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>Connect the database (and log in with the admin password) to see analytics.</div>;
+  if (err) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-red-500" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>{err}</div>;
+  if (!data) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-[#6b7280]">Loading analytics…</div>;
+  const t = data.totals;
+  const cards = [
+    { label: "Total Products", value: t.total },
+    { label: "In Stock", value: t.in_stock },
+    { label: "Out of Stock", value: t.out_of_stock },
+    { label: "Services", value: t.services },
+    { label: "On Discount", value: t.discounted },
+    { label: "Avg Price", value: fmt(t.avg_price) },
+    { label: "Catalog Value", value: fmt(t.inventory_value) },
+  ];
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {cards.map(c => (
+          <div key={c.label} className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+            <p className="text-2xl font-black text-[#1E40AF]">{c.value}</p>
+            <p className="text-xs font-semibold text-[#6b7280] mt-0.5">{c.label}</p>
+          </div>
+        ))}
+      </div>
+      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <p className="font-bold text-[#111827] mb-3">Products by Category</p>
+        <div className="space-y-2">
+          {data.byCategory.map(c => (
+            <div key={c.category} className="flex items-center justify-between text-sm">
+              <span className="text-[#374151]">{c.category}</span>
+              <span className="font-semibold text-[#111827]">{c.count} products · {fmt(c.value)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <p className="font-bold text-[#111827] mb-3">Products by Sub-Category</p>
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
+          {data.bySubcategory.map(c => (
+            <div key={c.subcategory} className="flex items-center justify-between text-sm">
+              <span className="text-[#374151]">{c.subcategory}</span>
+              <span className="font-semibold text-[#111827]">{c.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  useEffect(() => { if (unlocked) setOrders(getOrders()); }, [unlocked]);
+// ─── Admin: Product create / edit form ────────────────────────────────────────
+const ADMIN_CATEGORIES = ["Mobile Accessories", "Home Decoration", "Digital Services"];
 
-  const tryUnlock = () => {
-    if (pass === ADMIN_PASSCODE) {
-      sessionStorage.setItem("ahmadmart_admin", "1");
-      setUnlocked(true);
-    } else {
-      setPassErr("Incorrect passcode.");
-    }
+function ProductForm({ initial, onSave, onCancel, busy }: { initial: Product | null; onSave: (p: Partial<Product>) => void; onCancel: () => void; busy: boolean }) {
+  const [f, setF] = useState(() => ({
+    name: initial?.name ?? "",
+    price: initial?.price != null ? String(initial.price) : "",
+    originalPrice: initial?.originalPrice != null ? String(initial.originalPrice) : "",
+    priceNote: initial?.priceNote ?? "",
+    category: initial?.category ?? "Mobile Accessories",
+    subcategory: initial?.subcategory ?? "",
+    image: initial?.image ?? "",
+    images: (initial?.images ?? []).join("\n"),
+    badge: initial?.badge ?? "",
+    inStock: initial?.inStock ?? true,
+    isService: initial?.isService ?? false,
+    description: initial?.description ?? "",
+    specs: Object.entries(initial?.specs ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n"),
+  }));
+  const set = (k: string, v: string | boolean) => setF(prev => ({ ...prev, [k]: v }));
+  const submit = () => {
+    const images = f.images.split("\n").map(s => s.trim()).filter(Boolean);
+    const image = f.image.trim() || images[0] || "";
+    const specs: Record<string, string> = {};
+    f.specs.split("\n").forEach(line => { const i = line.indexOf(":"); if (i > 0) specs[line.slice(0, i).trim()] = line.slice(i + 1).trim(); });
+    onSave({
+      ...(initial?.id ? { id: initial.id } : {}),
+      name: f.name.trim(),
+      price: Number(f.price) || 0,
+      originalPrice: f.originalPrice ? Number(f.originalPrice) : undefined,
+      priceNote: f.priceNote.trim() || undefined,
+      category: f.category.trim(),
+      subcategory: f.subcategory.trim(),
+      image,
+      images: images.length ? images : (image ? [image] : []),
+      badge: (f.badge || undefined) as Product["badge"],
+      inStock: f.inStock,
+      isService: f.isService || undefined,
+      description: f.description.trim(),
+      specs,
+      rating: initial?.rating ?? 0,
+      reviews: initial?.reviews ?? 0,
+    });
+  };
+  const inp = "w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]";
+  return (
+    <div className="bg-white rounded-2xl p-5 mb-5" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
+      <p className="font-bold text-[#111827] mb-4">{initial ? `Edit: ${initial.name}` : "Add New Product"}</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="text-sm sm:col-span-2"><span className="font-semibold text-[#374151] block mb-1">Name</span><input className={inp} value={f.name} onChange={e => set("name", e.target.value)} /></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Category</span><input className={inp} list="adm-cats" value={f.category} onChange={e => set("category", e.target.value)} /><datalist id="adm-cats">{ADMIN_CATEGORIES.map(c => <option key={c} value={c} />)}</datalist></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Sub-Category</span><input className={inp} list="adm-subs" value={f.subcategory} onChange={e => set("subcategory", e.target.value)} /><datalist id="adm-subs">{CATEGORIES.map(c => <option key={c.subcategory} value={c.subcategory} />)}</datalist></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Price (Rs.)</span><input className={inp} type="number" value={f.price} onChange={e => set("price", e.target.value)} /></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Original Price (optional)</span><input className={inp} type="number" value={f.originalPrice} onChange={e => set("originalPrice", e.target.value)} /></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Price Note (e.g. per month)</span><input className={inp} value={f.priceNote} onChange={e => set("priceNote", e.target.value)} /></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Badge</span><select className={inp} value={f.badge} onChange={e => set("badge", e.target.value)}><option value="">None</option><option value="new">new</option><option value="sale">sale</option><option value="bestseller">bestseller</option></select></label>
+        <label className="text-sm sm:col-span-2"><span className="font-semibold text-[#374151] block mb-1">Main Image URL</span><input className={inp} value={f.image} onChange={e => set("image", e.target.value)} placeholder="/earbuds/x.jpg or https://..." /></label>
+        <label className="text-sm sm:col-span-2"><span className="font-semibold text-[#374151] block mb-1">Gallery Images (one URL per line)</span><textarea className={inp + " resize-none"} rows={2} value={f.images} onChange={e => set("images", e.target.value)} /></label>
+        <label className="text-sm sm:col-span-2"><span className="font-semibold text-[#374151] block mb-1">Description</span><textarea className={inp + " resize-none"} rows={3} value={f.description} onChange={e => set("description", e.target.value)} /></label>
+        <label className="text-sm sm:col-span-2"><span className="font-semibold text-[#374151] block mb-1">Specs (one "Key: Value" per line)</span><textarea className={inp + " resize-none"} rows={3} value={f.specs} onChange={e => set("specs", e.target.value)} /></label>
+        <label className="flex items-center gap-2 text-sm font-semibold text-[#374151]"><input type="checkbox" checked={f.inStock} onChange={e => set("inStock", e.target.checked)} /> In stock</label>
+        <label className="flex items-center gap-2 text-sm font-semibold text-[#374151]"><input type="checkbox" checked={f.isService} onChange={e => set("isService", e.target.checked)} /> Digital service (WhatsApp contact)</label>
+      </div>
+      <div className="flex gap-2 mt-4">
+        <button onClick={submit} disabled={busy} className="px-5 py-2.5 rounded-xl bg-[#1E40AF] text-white font-bold text-sm disabled:opacity-60">{busy ? "Saving…" : "Save Product"}</button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-xl border border-gray-200 text-[#374151] font-bold text-sm">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Admin: Products manager ──────────────────────────────────────────────────
+function AdminProducts({ dbMode }: { dbMode: boolean }) {
+  const { products, refreshProducts } = useContext(Store);
+  const [filter, setFilter] = useState("All");
+  const [editing, setEditing] = useState<Product | null | "new">(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  const cats = ["All", ...Array.from(new Set(products.map(p => p.category)))];
+  const list = products.filter(p => filter === "All" || p.category === filter);
+
+  const save = async (p: Partial<Product>) => {
+    setBusy(true); setErr(""); setMsg("");
+    try {
+      if (p.id) await apiUpdateProduct(p); else await apiCreateProduct(p);
+      await refreshProducts();
+      setEditing(null);
+      setMsg("Saved.");
+    } catch (e) { setErr(e instanceof Error ? e.message : "Save failed"); }
+    setBusy(false);
+  };
+  const remove = async (p: Product) => {
+    if (!window.confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+    setErr(""); setMsg("");
+    try { await apiDeleteProduct(p.id); await refreshProducts(); setMsg("Deleted."); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Delete failed"); }
+  };
+  const seed = async () => {
+    setBusy(true); setErr(""); setMsg("");
+    try { const r = await seedProducts(SEED_PRODUCTS); await refreshProducts(); setMsg(r.skipped ? (r.message || "Already seeded.") : `Seeded ${r.seeded} products.`); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Seed failed"); }
+    setBusy(false);
   };
 
+  return (
+    <div>
+      {!dbMode && <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">Read-only mode — the database API isn't connected, so changes can't be saved. Set <strong>DATABASE_URL</strong> and <strong>ADMIN_PASSWORD</strong> in Vercel and log in with the admin password to edit.</div>}
+      {(msg || err) && <div className={`mb-4 rounded-xl p-3 text-sm font-semibold ${err ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{err || msg}</div>}
+
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold outline-none focus:border-[#1E40AF]">
+          {cats.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <div className="flex gap-2">
+          {dbMode && <button onClick={seed} disabled={busy} className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] disabled:opacity-60">Seed database</button>}
+          {dbMode && <button onClick={() => setEditing("new")} className="px-4 py-2 rounded-xl bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5"><Plus size={15} /> Add Product</button>}
+        </div>
+      </div>
+
+      {editing !== null && dbMode && (
+        <ProductForm initial={editing === "new" ? null : editing} busy={busy} onSave={save} onCancel={() => setEditing(null)} />
+      )}
+
+      <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        {list.length === 0 ? (
+          <div className="p-10 text-center text-sm text-[#6b7280]">No products in this category.</div>
+        ) : list.map(p => (
+          <div key={p.id} className="flex items-center gap-3 p-3 border-b border-gray-100 last:border-0">
+            <img src={p.image} alt="" className="w-12 h-12 rounded-lg object-cover bg-gray-50 flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-[#111827] truncate">{p.name}</p>
+              <p className="text-xs text-[#6b7280]">{p.category} · {p.subcategory} · {fmt(p.price)}{p.priceNote ? ` ${p.priceNote}` : ""}{!p.inStock && <span className="text-red-500 font-semibold"> · Out of stock</span>}</p>
+            </div>
+            {dbMode && <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#1E40AF] hover:bg-blue-50">Edit</button>}
+            {dbMode && <button onClick={() => remove(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50">Delete</button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminPage() {
+  const { user, authReady, login, logout, refreshProducts } = useContext(Store);
+  const isAdmin = user?.role === "admin";
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [passErr, setPassErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"products" | "analytics" | "orders">("products");
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  useEffect(() => { if (isAdmin) { setOrders(getOrders()); refreshProducts(); } }, [isAdmin]);
+
+  const doLogin = async () => {
+    if (!form.email || !form.password) { setPassErr("Enter the admin email and password."); return; }
+    setBusy(true); setPassErr("");
+    try { await login(form.email.trim(), form.password); }
+    catch (e) { setPassErr(e instanceof Error ? e.message : "Login failed."); }
+    setBusy(false);
+  };
   const setStatus = (id: string, status: OrderStatus) => setOrders(updateOrderStatus(id, status));
 
-  if (!unlocked) return (
+  if (!authReady) return <div className="max-w-sm mx-auto px-4 py-20 text-center text-sm text-[#6b7280]">Loading…</div>;
+
+  if (!isAdmin) return (
     <div className="max-w-sm mx-auto px-4 py-20">
       <div className="bg-white rounded-2xl p-8 text-center" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
         <div className="w-14 h-14 rounded-2xl bg-[#1E40AF] flex items-center justify-center mx-auto mb-4">
           <Lock size={24} className="text-white" />
         </div>
         <h2 className="font-black text-xl text-[#111827] mb-1">Admin Access</h2>
-        <p className="text-xs text-[#6b7280] mb-5">Enter the admin passcode to manage orders.</p>
-        <input type="password" value={pass} autoFocus
-          onChange={e => { setPass(e.target.value); setPassErr(""); }}
-          onKeyDown={e => e.key === "Enter" && tryUnlock()}
-          placeholder="Passcode"
+        <p className="text-xs text-[#6b7280] mb-5">{user ? "This account is not an admin. Sign in with the admin email." : "Sign in with the admin email and password."}</p>
+        <input type="email" value={form.email} autoFocus placeholder="Admin email"
+          onChange={e => { setForm(f => ({ ...f, email: e.target.value })); setPassErr(""); }}
+          className="w-full px-4 py-3 rounded-xl border text-sm outline-none mb-2 border-gray-200 bg-gray-50 focus:border-[#1E40AF]" />
+        <input type="password" value={form.password} placeholder="Password"
+          onChange={e => { setForm(f => ({ ...f, password: e.target.value })); setPassErr(""); }}
+          onKeyDown={e => e.key === "Enter" && doLogin()}
           className={`w-full px-4 py-3 rounded-xl border text-sm outline-none mb-2 ${passErr ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
         {passErr && <p className="text-xs text-red-500 mb-2">{passErr}</p>}
-        <button onClick={tryUnlock} className="w-full py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Unlock</button>
+        <button onClick={doLogin} disabled={busy} className="w-full py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm disabled:opacity-60">{busy ? "Checking…" : "Sign In"}</button>
       </div>
     </div>
   );
 
+  const dbMode = true;
   const counts = ORDER_STATUSES.map(s => ({ s, n: orders.filter(o => o.status === s).length }));
+  const tabs = [{ k: "products", label: "Products" }, { k: "analytics", label: "Analytics" }, { k: "orders", label: "Orders" }] as const;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-[#111827] flex items-center gap-2">
-            <ShieldCheck size={26} className="text-[#1E40AF]" /> Order Admin
+            <ShieldCheck size={26} className="text-[#1E40AF]" /> Admin Dashboard
           </h1>
-          <p className="text-sm text-[#6b7280] mt-0.5">Verify JazzCash payments and manage order status.</p>
+          <p className="text-sm text-[#6b7280] mt-0.5">{dbMode ? "Connected to the database." : "Read-only — database not connected."}</p>
         </div>
-        <button onClick={() => setOrders(getOrders())}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
-          <RefreshCw size={15} /> Refresh
+        <button onClick={() => logout()} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
+          <Lock size={15} /> Log out
         </button>
       </div>
 
-      {/* Stat chips */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
-        {counts.map(({ s, n }) => (
-          <div key={s} className="rounded-xl px-4 py-3" style={{ background: STATUS_STYLE[s].bg }}>
-            <p className="text-2xl font-black" style={{ color: STATUS_STYLE[s].text }}>{n}</p>
-            <p className="text-xs font-semibold" style={{ color: STATUS_STYLE[s].text }}>{s}</p>
-          </div>
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        {tabs.map(t => (
+          <button key={t.k} onClick={() => setTab(t.k)} className={`px-4 py-2.5 text-sm font-bold relative ${tab === t.k ? "text-[#1E40AF]" : "text-[#6b7280] hover:text-[#374151]"}`}>
+            {t.label}{tab === t.k && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1E40AF]" />}
+          </button>
         ))}
       </div>
+
+      {tab === "products" && <AdminProducts dbMode={dbMode} />}
+      {tab === "analytics" && <AdminAnalytics dbMode={dbMode} />}
+      {tab === "orders" && (
+        <div>
+          <div className="flex justify-end mb-3">
+            <button onClick={() => setOrders(getOrders())} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
+              <RefreshCw size={15} /> Refresh
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+            {counts.map(({ s, n }) => (
+              <div key={s} className="rounded-xl px-4 py-3" style={{ background: STATUS_STYLE[s].bg }}>
+                <p className="text-2xl font-black" style={{ color: STATUS_STYLE[s].text }}>{n}</p>
+                <p className="text-xs font-semibold" style={{ color: STATUS_STYLE[s].text }}>{s}</p>
+              </div>
+            ))}
+          </div>
 
       {orders.length === 0 ? (
         <div className="bg-white rounded-2xl p-16 text-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
@@ -2509,6 +2830,8 @@ function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
         </div>
       )}
     </div>
