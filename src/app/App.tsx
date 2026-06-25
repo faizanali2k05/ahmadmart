@@ -7,8 +7,15 @@ import {
   Plus, Minus, Trash2, Tag, MapPin, Phone, User, Eye, EyeOff,
   CheckCircle, ArrowRight, TrendingUp, Award, Gift,
   Instagram, Mail, Send, Smartphone,
-  Battery, Plug, Wifi, RotateCcw, ZoomIn
+  Battery, Plug, Wifi, RotateCcw, ZoomIn,
+  Copy, ShieldCheck, Lock, RefreshCw, MessageCircle
 } from "lucide-react";
+import {
+  JAZZCASH_NUMBER, JAZZCASH_TITLE, ADMIN_PASSCODE, WHATSAPP_DISPLAY,
+  ORDER_STATUSES, getOrders, saveOrder, updateOrderStatus, newOrderId,
+  sendOrderEmail, whatsappOrderUrl, toWaNumber,
+  type Order, type OrderStatus,
+} from "./orderStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Product {
@@ -36,6 +43,7 @@ interface StoreCtx {
   wishlist: WishlistItem[];
   addToCart: (p: Product, qty?: number) => void;
   removeFromCart: (id: number) => void;
+  clearCart: () => void;
   updateQty: (id: number, qty: number) => void;
   toggleWishlist: (p: Product) => void;
   inWishlist: (id: number) => boolean;
@@ -224,6 +232,7 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
   const removeFromCart = useCallback((id: number) => setCart(prev => prev.filter(i => i.id !== id)), []);
+  const clearCart = useCallback(() => setCart([]), []);
   const updateQty = useCallback((id: number, qty: number) => {
     if (qty < 1) return removeFromCart(id);
     setCart(prev => prev.map(i => i.id === id ? { ...i, qty } : i));
@@ -241,9 +250,9 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({
-    cart, wishlist, addToCart, removeFromCart, updateQty, toggleWishlist, inWishlist,
+    cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
     cartCount, cartTotal, user, login, logout, recentlyViewed, addRecentlyViewed,
-  }), [cart, wishlist, addToCart, removeFromCart, updateQty, toggleWishlist, inWishlist,
+  }), [cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
     cartCount, cartTotal, user, login, logout, recentlyViewed, addRecentlyViewed]);
 
   return <Store.Provider value={value}>{children}</Store.Provider>;
@@ -381,7 +390,7 @@ function Navbar() {
         style={{ background: scrolled ? "rgba(255,255,255,0.97)" : "#fff", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(30,64,175,0.08)" }}>
         {/* Top bar */}
         <div className="bg-[#1E40AF] text-white text-xs py-1.5 text-center font-medium">
-          🚚 Free delivery on orders above Rs. 2,000 | Cash on Delivery Available Across Pakistan
+          🚚 Free delivery on orders above Rs. 2,000 | Easy JazzCash Payment Across Pakistan
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -1344,52 +1353,93 @@ function CartPage() {
   );
 }
 
-// ─── Checkout Page ────────────────────────────────────────────────────────────
+// ─── Checkout Page (Manual JazzCash Payment) ──────────────────────────────────
 function CheckoutPage() {
-  const { cart, cartTotal, user } = useContext(Store);
+  const { cart, cartTotal, clearCart, user } = useContext(Store);
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: user?.name || "", phone: "", address: "", city: "", notes: "" });
+  const [form, setForm] = useState({ name: user?.name || "", phone: "", email: user?.email || "", address: "", notes: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [placed, setPlaced] = useState(false);
-  const [orderId] = useState(`RM${Date.now().toString().slice(-6)}`);
+  const [copied, setCopied] = useState("");
+  const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
+  const [waUrl, setWaUrl] = useState("");
+  const [orderId] = useState(newOrderId());
 
   const shipping = cartTotal >= 2000 ? 0 : 200;
   const total = cartTotal + shipping;
 
+  const copy = (text: string, key: string) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(key);
+    setTimeout(() => setCopied(""), 1500);
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = "Name is required";
-    if (!form.phone.trim() || !/^0\d{9,10}$/.test(form.phone)) e.phone = "Enter a valid Pakistani phone number";
-    if (!form.address.trim()) e.address = "Address is required";
-    if (!form.city.trim()) e.city = "City is required";
+    if (!form.name.trim()) e.name = "Full name is required";
+    if (!form.phone.trim() || !/^0\d{9,10}$/.test(form.phone.trim())) e.phone = "Enter a valid WhatsApp number (e.g. 03001234567)";
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "Enter a valid email address";
+    if (!form.address.trim()) e.address = "Complete shipping address is required";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handlePlace = () => {
-    if (!validate()) return;
-    setPlaced(true);
+  // Runs synchronously so opening WhatsApp stays inside the click gesture and is
+  // not blocked by the browser pop-up blocker.
+  const handleSubmit = () => {
+    if (!validate()) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    const order: Order = {
+      id: orderId,
+      createdAt: Date.now(),
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      address: form.address.trim(),
+      notes: form.notes.trim() || undefined,
+      items: cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price })),
+      subtotal: cartTotal,
+      shipping,
+      total,
+      paymentMethod: "JazzCash (Manual)",
+      status: "Pending Verification", // never auto-paid — payment is verified on WhatsApp
+    };
+    const url = whatsappOrderUrl(order);
+    setWaUrl(url);
+    window.open(url, "_blank"); // opens the customer's WhatsApp, pre-filled, to the store
+    saveOrder(order);
+    sendOrderEmail(order, null); // optional email backup (only sends if a key is set)
+    clearCart();
+    setPlacedOrder(order);
   };
 
-  if (placed) return (
+  if (placedOrder) return (
     <div className="max-w-lg mx-auto px-4 py-16 text-center">
-      <div className="bg-white rounded-3xl p-10" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
-        <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
-          <CheckCircle size={40} className="text-emerald-500" />
+      <div className="bg-white rounded-3xl p-8 sm:p-10" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
+        <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5">
+          <Clock size={38} className="text-amber-500" />
         </div>
-        <h2 className="text-2xl font-black text-[#111827] mb-2">Order Placed!</h2>
-        <p className="text-[#6b7280] text-sm mb-4">Thank you, {form.name}! Your order has been successfully placed.</p>
-        <div className="bg-[#F8F9FB] rounded-xl p-4 mb-6 text-left">
+        <h2 className="text-2xl font-black text-[#111827] mb-2">Order Received!</h2>
+        <p className="text-[#374151] text-sm mb-4 font-semibold">Your order has been received and is awaiting payment verification.</p>
+        <div className="bg-[#F8F9FB] rounded-xl p-4 mb-5 text-left">
           <p className="text-xs text-[#6b7280] mb-1">Order ID</p>
-          <p className="font-black text-[#1E40AF] text-lg">#{orderId}</p>
+          <p className="font-black text-[#1E40AF] text-lg">#{placedOrder.id}</p>
           <div className="mt-3 space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-[#6b7280]">Delivery to:</span><span className="font-semibold">{form.city}</span></div>
-            <div className="flex justify-between"><span className="text-[#6b7280]">Payment:</span><span className="font-semibold text-emerald-600">Cash on Delivery</span></div>
-            <div className="flex justify-between"><span className="text-[#6b7280]">Total:</span><span className="font-black text-[#1E40AF]">{fmt(total)}</span></div>
+            <div className="flex justify-between"><span className="text-[#6b7280]">Amount Paid:</span><span className="font-black text-[#1E40AF]">{fmt(placedOrder.total)}</span></div>
+            <div className="flex justify-between"><span className="text-[#6b7280]">Payment:</span><span className="font-semibold">JazzCash (Manual)</span></div>
+            <div className="flex justify-between"><span className="text-[#6b7280]">Status:</span><span className="font-semibold text-amber-600">Pending Verification</span></div>
           </div>
         </div>
-        <p className="text-xs text-[#6b7280] mb-6">We'll call you at <strong>{form.phone}</strong> to confirm your order.</p>
+
+        {/* Final WhatsApp step */}
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4 mb-4 text-left">
+          <p className="font-bold text-green-800 text-sm flex items-center gap-1.5 mb-1"><MessageCircle size={16} /> One last step on WhatsApp</p>
+          <p className="text-xs text-green-700">WhatsApp has opened with your order details. <strong>Attach your JazzCash payment screenshot in that chat and press send.</strong> We'll verify it and confirm your order on WhatsApp.</p>
+        </div>
+
+        <a href={waUrl} target="_blank" rel="noopener noreferrer"
+          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-white font-black text-sm mb-2.5 transition-transform active:scale-95"
+          style={{ background: "#25D366", boxShadow: "0 4px 16px rgba(37,211,102,0.35)" }}>
+          <MessageCircle size={18} /> Open WhatsApp & Send Order
+        </a>
         <button onClick={() => navigate("/")} className="w-full py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm"
           style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
           Continue Shopping
@@ -1420,34 +1470,103 @@ function CheckoutPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl sm:text-3xl font-black text-[#111827] mb-6">Checkout</h1>
       <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          {/* Customer details */}
           <div className="bg-white rounded-2xl p-6" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
-            <h3 className="font-bold text-[#111827] mb-5 flex items-center gap-2"><MapPin size={18} className="text-[#F97316]" /> Delivery Information</h3>
+            <h3 className="font-bold text-[#111827] mb-5 flex items-center gap-2"><MapPin size={18} className="text-[#F97316]" /> Customer Details</h3>
             <div className="space-y-4">
               {field("name", "Full Name", "text", "Enter your full name")}
-              {field("phone", "Phone Number", "tel", "03001234567")}
-              {field("address", "Delivery Address", "text", "House no., Street, Area")}
-              {field("city", "City", "text", "e.g. Karachi, Lahore, Islamabad")}
+              {field("phone", "WhatsApp Number", "tel", "03001234567")}
+              {field("email", "Email Address (optional)", "email", "you@example.com")}
+              <div>
+                <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Complete Shipping Address</label>
+                <textarea value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                  placeholder="House no., street, area, city, province, postal code"
+                  rows={3}
+                  className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-colors resize-none ${errors.address ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
+                {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
+              </div>
               <div>
                 <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Order Notes (Optional)</label>
                 <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   placeholder="Any special instructions..."
-                  rows={3}
+                  rows={2}
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF] resize-none" />
               </div>
             </div>
+          </div>
 
-            <div className="mt-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-                  <Package size={18} className="text-emerald-600" />
-                </div>
-                <div>
-                  <p className="font-bold text-emerald-800 text-sm">Cash on Delivery</p>
-                  <p className="text-xs text-emerald-600">Pay when your order arrives at your doorstep</p>
-                </div>
-                <CheckCircle size={20} className="text-emerald-500 ml-auto" />
+          {/* JazzCash manual payment module */}
+          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+            <div className="px-6 py-4 flex items-center gap-3" style={{ background: "linear-gradient(135deg, #1E40AF, #1e3a8a)" }}>
+              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+                <Smartphone size={20} className="text-white" />
               </div>
+              <div>
+                <p className="font-black text-white text-base leading-tight">Pay with JazzCash</p>
+                <p className="text-blue-200 text-xs">Manual payment · verified by our team</p>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {/* Amount to pay */}
+              <div className="rounded-2xl p-5 mb-5 text-center" style={{ background: "linear-gradient(135deg, #FFF7ED, #FFEDD5)", border: "1px solid #FED7AA" }}>
+                <p className="text-xs font-bold uppercase tracking-wide text-[#9A3412]">Amount to Pay</p>
+                <p className="text-3xl sm:text-4xl font-black text-[#F97316] mt-1">{fmt(total)}</p>
+                <p className="text-xs text-[#9A3412] mt-1">Send this <strong>exact</strong> amount to the number below.</p>
+              </div>
+
+              {/* Account details */}
+              <div className="space-y-2.5 mb-5">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-[#6b7280]">JazzCash Number</p>
+                    <p className="font-black text-[#111827] text-lg tracking-wide">{JAZZCASH_NUMBER}</p>
+                  </div>
+                  <button onClick={() => copy(JAZZCASH_NUMBER, "num")}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#1E40AF] text-white text-xs font-bold hover:bg-[#1e3a8a] transition-colors flex-shrink-0">
+                    {copied === "num" ? <CheckCircle size={14} /> : <Copy size={14} />}
+                    {copied === "num" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-[#6b7280]">Account Title</p>
+                    <p className="font-bold text-[#111827]">{JAZZCASH_TITLE}</p>
+                  </div>
+                  <button onClick={() => copy(JAZZCASH_TITLE, "title")}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-gray-200 text-[#374151] text-xs font-bold hover:border-[#1E40AF] transition-colors flex-shrink-0">
+                    {copied === "title" ? <CheckCircle size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                    {copied === "title" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 mb-5">
+                <p className="font-bold text-[#1E40AF] text-sm mb-3">How to pay</p>
+                <ol className="space-y-2.5">
+                  {[
+                    "Send the exact order amount to the JazzCash number above.",
+                    "Take a screenshot of the successful transaction.",
+                    "Fill in your details, then tap “Submit on WhatsApp”.",
+                    "Your order opens in WhatsApp — attach the screenshot there and send it to us. We'll verify it and confirm your order on WhatsApp.",
+                  ].map((text, i) => (
+                    <li key={i} className="flex gap-3 text-sm text-[#374151]">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#1E40AF] text-white text-xs font-black flex items-center justify-center">{i + 1}</span>
+                      <span className="pt-0.5">{text}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="text-xs text-green-700 mt-3 flex items-center gap-1.5">
+                  <MessageCircle size={14} className="flex-shrink-0" /> Your order is sent to our WhatsApp <strong>{WHATSAPP_DISPLAY}</strong> for verification.
+                </p>
+              </div>
+
+              <p className="text-[11px] text-[#6b7280] flex items-start gap-1.5">
+                <ShieldCheck size={14} className="text-[#1E40AF] flex-shrink-0 mt-0.5" />
+                This is a manual payment system. Your order will be marked <strong>Pending Verification</strong> until we confirm your payment on WhatsApp — it is never auto-approved.
+              </p>
             </div>
           </div>
         </div>
@@ -1472,13 +1591,14 @@ function CheckoutPage() {
             <div className="border-t border-gray-100 pt-4 space-y-2 mb-5">
               <div className="flex justify-between text-sm"><span className="text-[#6b7280]">Subtotal</span><span className="font-semibold">{fmt(cartTotal)}</span></div>
               <div className="flex justify-between text-sm"><span className="text-[#6b7280]">Shipping</span><span className={shipping === 0 ? "text-emerald-600 font-semibold" : "font-semibold"}>{shipping === 0 ? "Free" : fmt(shipping)}</span></div>
-              <div className="flex justify-between font-black text-[#111827]"><span>Total</span><span className="text-[#1E40AF]">{fmt(total)}</span></div>
+              <div className="flex justify-between font-black text-[#111827] text-base"><span>Total</span><span className="text-[#1E40AF]">{fmt(total)}</span></div>
             </div>
-            <button onClick={handlePlace}
-              className="w-full py-3.5 rounded-xl bg-[#F97316] text-white font-black text-sm hover:bg-orange-500 transition-all active:scale-95"
-              style={{ boxShadow: "0 4px 16px rgba(249,115,22,0.35)" }}>
-              Place Order — {fmt(total)}
+            <button onClick={handleSubmit}
+              className="w-full py-3.5 rounded-xl text-white font-black text-sm transition-transform active:scale-95 flex items-center justify-center gap-2"
+              style={{ background: "#25D366", boxShadow: "0 4px 16px rgba(37,211,102,0.35)" }}>
+              <MessageCircle size={18} /> Submit on WhatsApp — {fmt(total)}
             </button>
+            <p className="text-[11px] text-[#6b7280] text-center mt-3">After tapping submit, attach your JazzCash screenshot in the WhatsApp chat that opens.</p>
           </div>
         </div>
       </div>
@@ -1797,6 +1917,150 @@ function AccountPage() {
   );
 }
 
+// ─── Admin: Order Verification ────────────────────────────────────────────────
+const STATUS_STYLE: Record<OrderStatus, { bg: string; text: string }> = {
+  "Pending Verification": { bg: "#FFF7ED", text: "#9A3412" },
+  "Verified": { bg: "#EFF6FF", text: "#1E40AF" },
+  "Shipped": { bg: "#F5F3FF", text: "#6D28D9" },
+  "Delivered": { bg: "#ECFDF5", text: "#047857" },
+  "Cancelled": { bg: "#FEF2F2", text: "#B91C1C" },
+};
+
+function AdminPage() {
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem("ahmadmart_admin") === "1");
+  const [pass, setPass] = useState("");
+  const [passErr, setPassErr] = useState("");
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  useEffect(() => { if (unlocked) setOrders(getOrders()); }, [unlocked]);
+
+  const tryUnlock = () => {
+    if (pass === ADMIN_PASSCODE) {
+      sessionStorage.setItem("ahmadmart_admin", "1");
+      setUnlocked(true);
+    } else {
+      setPassErr("Incorrect passcode.");
+    }
+  };
+
+  const setStatus = (id: string, status: OrderStatus) => setOrders(updateOrderStatus(id, status));
+
+  if (!unlocked) return (
+    <div className="max-w-sm mx-auto px-4 py-20">
+      <div className="bg-white rounded-2xl p-8 text-center" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
+        <div className="w-14 h-14 rounded-2xl bg-[#1E40AF] flex items-center justify-center mx-auto mb-4">
+          <Lock size={24} className="text-white" />
+        </div>
+        <h2 className="font-black text-xl text-[#111827] mb-1">Admin Access</h2>
+        <p className="text-xs text-[#6b7280] mb-5">Enter the admin passcode to manage orders.</p>
+        <input type="password" value={pass} autoFocus
+          onChange={e => { setPass(e.target.value); setPassErr(""); }}
+          onKeyDown={e => e.key === "Enter" && tryUnlock()}
+          placeholder="Passcode"
+          className={`w-full px-4 py-3 rounded-xl border text-sm outline-none mb-2 ${passErr ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
+        {passErr && <p className="text-xs text-red-500 mb-2">{passErr}</p>}
+        <button onClick={tryUnlock} className="w-full py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Unlock</button>
+      </div>
+    </div>
+  );
+
+  const counts = ORDER_STATUSES.map(s => ({ s, n: orders.filter(o => o.status === s).length }));
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-[#111827] flex items-center gap-2">
+            <ShieldCheck size={26} className="text-[#1E40AF]" /> Order Admin
+          </h1>
+          <p className="text-sm text-[#6b7280] mt-0.5">Verify JazzCash payments and manage order status.</p>
+        </div>
+        <button onClick={() => setOrders(getOrders())}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
+          <RefreshCw size={15} /> Refresh
+        </button>
+      </div>
+
+      {/* Stat chips */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
+        {counts.map(({ s, n }) => (
+          <div key={s} className="rounded-xl px-4 py-3" style={{ background: STATUS_STYLE[s].bg }}>
+            <p className="text-2xl font-black" style={{ color: STATUS_STYLE[s].text }}>{n}</p>
+            <p className="text-xs font-semibold" style={{ color: STATUS_STYLE[s].text }}>{s}</p>
+          </div>
+        ))}
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="bg-white rounded-2xl p-16 text-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+          <Package size={56} className="mx-auto text-gray-300 mb-4" />
+          <p className="font-bold text-[#111827] mb-1">No orders yet</p>
+          <p className="text-sm text-[#6b7280]">Orders placed through checkout will appear here for verification.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {orders.map(o => (
+            <div key={o.id} className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+              <div className="flex flex-col lg:flex-row gap-5">
+                {/* Verify payment proof on WhatsApp */}
+                <a href={`https://wa.me/${toWaNumber(o.phone)}`} target="_blank" rel="noopener noreferrer"
+                  className="w-full lg:w-44 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-green-200 bg-green-50 p-4 text-center hover:bg-green-100 transition-colors flex-shrink-0 min-h-[130px]">
+                  <MessageCircle size={28} className="text-green-600" />
+                  <p className="text-xs font-bold text-green-800">Verify payment proof on WhatsApp</p>
+                  <span className="text-[11px] font-semibold text-green-600 underline">Open chat with {o.name.split(" ")[0]}</span>
+                </a>
+
+                {/* Details */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-[#1E40AF]">#{o.id}</span>
+                      <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: STATUS_STYLE[o.status].bg, color: STATUS_STYLE[o.status].text }}>{o.status}</span>
+                    </div>
+                    <span className="text-xs text-[#6b7280]">{new Date(o.createdAt).toLocaleString()}</span>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm mb-3">
+                    <p><span className="text-[#6b7280]">Name:</span> <span className="font-semibold text-[#111827]">{o.name}</span></p>
+                    <p><span className="text-[#6b7280]">WhatsApp:</span> <a href={`https://wa.me/${toWaNumber(o.phone)}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-green-600 inline-flex items-center gap-1"><MessageCircle size={12} /> {o.phone}</a></p>
+                    {o.email && <p className="truncate"><span className="text-[#6b7280]">Email:</span> <a href={`mailto:${o.email}`} className="font-semibold text-[#1E40AF]">{o.email}</a></p>}
+                    <p><span className="text-[#6b7280]">Total:</span> <span className="font-black text-[#1E40AF]">{fmt(o.total)}</span></p>
+                    <p className="sm:col-span-2"><span className="text-[#6b7280]">Address:</span> <span className="font-semibold text-[#111827]">{o.address}</span></p>
+                    {o.notes && <p className="sm:col-span-2"><span className="text-[#6b7280]">Notes:</span> <span className="text-[#374151]">{o.notes}</span></p>}
+                  </div>
+
+                  <div className="rounded-xl bg-[#F8F9FB] p-3 mb-3">
+                    <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1.5">Products</p>
+                    <div className="space-y-1">
+                      {o.items.map(it => (
+                        <div key={it.id} className="flex justify-between text-sm">
+                          <span className="text-[#374151] truncate pr-2">{it.name} <span className="text-[#6b7280]">× {it.qty}</span></span>
+                          <span className="font-semibold text-[#111827] flex-shrink-0">{fmt(it.price * it.qty)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-[#6b7280]">Update status:</span>
+                    {ORDER_STATUSES.map(s => (
+                      <button key={s} onClick={() => setStatus(o.id, s)}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${o.status === s ? "" : "bg-gray-100 text-[#374151] hover:bg-gray-200"}`}
+                        style={o.status === s ? { background: STATUS_STYLE[s].bg, color: STATUS_STYLE[s].text, outline: `1.5px solid ${STATUS_STYLE[s].text}` } : undefined}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Scroll To Top ────────────────────────────────────────────────────────────
 // Reset scroll position the moment the route changes so navigation feels instant
 // instead of landing the new page at the previous scroll offset.
@@ -1828,6 +2092,7 @@ function AppShell() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/account" element={<AccountPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>
