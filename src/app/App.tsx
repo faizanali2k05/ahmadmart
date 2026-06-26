@@ -39,6 +39,10 @@ import {
   sellerGetProducts, sellerCreateProduct, sellerUpdateProduct, sellerDeleteProduct,
   adminGetSellers, type SellerSummary,
 } from "./sellerApi";
+import {
+  sendMessage, getConversations, getThread, getUnreadCount,
+  type Conversation, type ChatMessage,
+} from "./messagesApi";
 
 interface CartItem extends Product { qty: number; }
 interface WishlistItem extends Product {}
@@ -561,8 +565,19 @@ function Navbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const [unread, setUnread] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Keep the unread-message badge fresh while signed in.
+  useEffect(() => {
+    if (!user) { setUnread(0); return; }
+    let alive = true;
+    const tick = () => getUnreadCount().then(n => { if (alive) setUnread(n); });
+    tick();
+    const t = setInterval(tick, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [user, location]);
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 10);
@@ -621,6 +636,17 @@ function Navbar() {
                 className="w-9 h-9 hidden sm:flex items-center justify-center rounded-xl hover:bg-[#FFF7ED] text-[#111827] hover:text-[#F97316] transition-colors">
                 <Heart size={18} />
               </Link>
+              {user && (
+                <Link to="/messages"
+                  className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
+                  <MessageCircle size={18} />
+                  {unread > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#F97316] text-white text-[10px] font-black flex items-center justify-center">
+                      {unread > 9 ? "9+" : unread}
+                    </span>
+                  )}
+                </Link>
+              )}
               <Link to={user ? "/account" : "/login"}
                 className="w-9 h-9 hidden sm:flex items-center justify-center rounded-xl hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
                 <User size={18} />
@@ -670,6 +696,17 @@ function Navbar() {
                 <Link to="/wishlist" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#FFF7ED] hover:text-[#F97316] transition-colors flex items-center gap-2">
                   <Heart size={16} /> Wishlist
                 </Link>
+                {user && (
+                  <Link to="/messages" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2"><MessageCircle size={16} /> Messages</span>
+                    {unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#F97316] text-white text-[10px] font-black flex items-center justify-center">{unread > 9 ? "9+" : unread}</span>}
+                  </Link>
+                )}
+                {user && (user.role === "seller" || user.role === "admin") && (
+                  <Link to={user.role === "admin" ? "/admin" : "/seller"} className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center gap-2">
+                    {user.role === "admin" ? <ShieldCheck size={16} /> : <Package size={16} />} {user.role === "admin" ? "Admin" : "Seller Dashboard"}
+                  </Link>
+                )}
                 <Link to={user ? "/account" : "/login"} className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center gap-2">
                   <User size={16} /> {user ? user.name : "Login / Register"}
                 </Link>
@@ -1346,6 +1383,57 @@ function ReviewSection({ productId }: { productId: number }) {
   );
 }
 
+// ─── Ask the seller (in-app chat starter on a product) ───────────────────────
+function AskSeller({ product }: { product: Product }) {
+  const { user } = useContext(Store);
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState("");
+
+  if (!product.sellerId) return null;                       // only seller products
+  if (user && user.id === product.sellerId) return null;    // not your own store
+
+  const submit = async () => {
+    if (!user) { navigate("/login"); return; }
+    if (!body.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      await sendMessage({ productId: product.id, buyerId: user.id, sellerId: product.sellerId!, body: body.trim() });
+      setSent(true); setBody("");
+    } catch (e) { setErr(e instanceof Error ? e.message : "Could not send your message"); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-gray-200 p-4">
+      {!open ? (
+        <button onClick={() => { setOpen(true); setSent(false); }} className="flex items-center gap-2 text-sm font-bold text-[#1E40AF]">
+          <MessageCircle size={16} /> Ask {product.sellerStore || "the seller"} a question
+        </button>
+      ) : sent ? (
+        <div className="text-sm">
+          <p className="text-emerald-700 font-semibold flex items-center gap-1.5 mb-2"><CheckCircle size={16} /> Message sent!</p>
+          <Link to="/messages" className="text-[#1E40AF] font-bold">View conversation in Messages →</Link>
+        </div>
+      ) : (
+        <div>
+          <p className="text-sm font-bold text-[#111827] mb-2 flex items-center gap-1.5"><MessageCircle size={15} className="text-[#1E40AF]" /> Ask {product.sellerStore || "the seller"}</p>
+          <textarea value={body} onChange={e => setBody(e.target.value)} rows={2} placeholder="e.g. Is this available in black? Any discount on 2?"
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF] resize-none mb-2" />
+          {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={submit} disabled={busy || !body.trim()} className="px-4 py-2 rounded-xl bg-[#1E40AF] text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5"><Send size={14} /> {busy ? "Sending…" : "Send"}</button>
+            <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl border border-gray-200 text-[#374151] text-sm font-bold">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Product Detail Page ──────────────────────────────────────────────────────
 function ProductDetailPage() {
   const { id } = useParams();
@@ -1528,6 +1616,7 @@ function ProductDetailPage() {
               </div>
             ))}
           </div>
+          <AskSeller product={product} />
         </div>
       </div>
 
@@ -2484,6 +2573,9 @@ function AccountPage() {
                   <Icon size={15} /> {label}
                 </button>
               ))}
+              <Link to="/messages" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-[#374151] hover:bg-gray-100 transition-colors">
+                <MessageCircle size={15} /> Messages
+              </Link>
               <button onClick={() => { logout(); navigate("/"); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors">
                 <X size={15} /> Sign Out
@@ -2596,6 +2688,116 @@ function AccountPage() {
                   {wishlist.map(p => <ProductCard key={p.id} product={p} />)}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Messages (buyer ↔ seller chat) ───────────────────────────────────────────
+function MessagesPage() {
+  const { user, authReady } = useContext(Store);
+  const navigate = useNavigate();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [active, setActive] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const loadConvos = () => { getConversations().then(setConversations).catch(e => setErr(e instanceof Error ? e.message : "Failed to load messages")); };
+  useEffect(() => { if (user) loadConvos(); }, [user]);
+
+  const openThread = async (c: Conversation) => {
+    setActive(c); setErr(""); setMessages([]);
+    try { setMessages(await getThread(c.productId, c.buyerId, c.sellerId)); loadConvos(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Failed to open conversation"); }
+  };
+  const send = async () => {
+    if (!active || !body.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      const msg = await sendMessage({ productId: active.productId, buyerId: active.buyerId, sellerId: active.sellerId, body: body.trim() });
+      setMessages(prev => [...prev, msg]);
+      setBody(""); loadConvos();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Could not send message"); }
+    setBusy(false);
+  };
+
+  if (!authReady) return <div className="max-w-sm mx-auto px-4 py-20 text-center text-sm text-[#6b7280]">Loading…</div>;
+  if (!user) return (
+    <div className="max-w-md mx-auto px-4 py-20 text-center">
+      <MessageCircle size={56} className="mx-auto text-gray-300 mb-4" />
+      <h2 className="font-black text-xl text-[#111827] mb-2">Sign in to view your messages</h2>
+      <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm mr-3">Sign In</button>
+      <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-xl font-bold text-sm">Register</button>
+    </div>
+  );
+
+  const other = (c: Conversation) => (user.id === c.buyerId ? (c.sellerStore || "Seller") : c.buyerName);
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <h1 className="text-2xl sm:text-3xl font-black text-[#111827] mb-5 flex items-center gap-2"><MessageCircle size={24} className="text-[#1E40AF]" /> Messages</h1>
+      {err && <div className="mb-4 rounded-xl bg-red-50 text-red-600 p-3 text-sm font-semibold">{err}</div>}
+      <div className="grid lg:grid-cols-3 gap-4">
+        {/* Conversation list */}
+        <div className={`lg:col-span-1 ${active ? "hidden lg:block" : "block"}`}>
+          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+            {conversations.length === 0 ? (
+              <div className="p-8 text-center text-sm text-[#6b7280]">No conversations yet. Ask a seller a question from any product page.</div>
+            ) : conversations.map(c => (
+              <button key={`${c.productId}-${c.buyerId}-${c.sellerId}`} onClick={() => openThread(c)}
+                className={`w-full text-left flex items-center gap-3 p-3 border-b border-gray-100 last:border-0 transition-colors ${active && active.productId === c.productId && active.buyerId === c.buyerId && active.sellerId === c.sellerId ? "bg-blue-50/60" : "hover:bg-gray-50"}`}>
+                <img src={c.productImage} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-50 flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-[#111827] truncate">{other(c)}</p>
+                  <p className="text-xs text-[#6b7280] truncate">{c.productName}: {c.lastBody}</p>
+                </div>
+                {c.unread > 0 && <span className="w-5 h-5 rounded-full bg-[#F97316] text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">{c.unread}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Active thread */}
+        <div className={`lg:col-span-2 ${active ? "block" : "hidden lg:block"}`}>
+          {!active ? (
+            <div className="bg-white rounded-2xl p-12 text-center text-sm text-[#6b7280] h-full flex items-center justify-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+              Select a conversation to read and reply.
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl flex flex-col" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)", height: "70vh" }}>
+              <div className="flex items-center gap-2 p-4 border-b border-gray-100">
+                <button onClick={() => setActive(null)} className="lg:hidden text-[#1E40AF]"><ChevronLeft size={20} /></button>
+                <img src={active.productImage} alt="" className="w-9 h-9 rounded-lg object-cover bg-gray-50" onError={e => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-[#111827] truncate">{other(active)}</p>
+                  <Link to={`/product/${active.productId}`} className="text-xs text-[#6b7280] truncate hover:text-[#1E40AF]">About: {active.productName}</Link>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+                {messages.map(m => (
+                  <div key={m.id} className={`flex ${m.senderId === user.id ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[75%] px-3.5 py-2 rounded-2xl text-sm ${m.senderId === user.id ? "bg-[#1E40AF] text-white rounded-br-sm" : "bg-[#F1F5F9] text-[#111827] rounded-bl-sm"}`}>
+                      {m.body}
+                      <span className={`block text-[10px] mt-0.5 ${m.senderId === user.id ? "text-blue-200" : "text-[#9ca3af]"}`}>{new Date(m.createdAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {messages.length === 0 && <p className="text-center text-xs text-[#6b7280] py-6">No messages yet — say hello.</p>}
+              </div>
+              <div className="p-3 border-t border-gray-100 flex gap-2">
+                <input value={body} onChange={e => setBody(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
+                  placeholder="Type a message…"
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+                <button onClick={send} disabled={busy || !body.trim()}
+                  className="px-4 py-2.5 rounded-xl bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-60">
+                  <Send size={15} /> Send
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -3168,6 +3370,7 @@ function AppShell() {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/seller" element={<SellerPage />} />
+          <Route path="/messages" element={<MessagesPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="*" element={<HomePage />} />
         </Routes>

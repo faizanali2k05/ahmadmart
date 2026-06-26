@@ -78,7 +78,16 @@ get full access to the dashboard. To change the admin password later, update
   earnings (sum of their approved/fulfilled orders).
 - ⚠️ **Re-run [`db/schema.sql`](db/schema.sql)** — it adds the seller columns
   (`store_name`, `whatsapp`, `jazzcash_*` on `users`; `seller_id` on `products`
-  and `orders`). All statements are idempotent (`add column if not exists`).
+  and `orders`) and the `messages` table. All statements are idempotent.
+
+## Messages (buyer ↔ seller chat)
+
+- On any **seller** product, a signed-in buyer can tap **"Ask … a question"** to
+  start an in-app chat (no WhatsApp needed).
+- Both sides see their threads at **/messages** (and a link in the profile). The
+  navbar shows an **unread badge** (refreshes every 30s).
+- A conversation is one thread per (product, buyer, seller); the seller replies
+  from the same page. No commission is taken on any sale.
 
 ## 8. Orders (approval flow)
 
@@ -116,8 +125,9 @@ containing `DATABASE_URL`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
 - `api/products.js` — public product list (joined with seller store/contact)
 - `api/admin/products.js` / `analytics.js` / `seed.js` / `orders.js` / `sellers.js` — admin-only
 - `api/seller/products.js` — a seller manages their own products
+- `api/messages.js` — buyer ↔ seller chat (send, threads, unread count)
 - `api/orders.js` — place an order / list my orders (signed-in users)
 - `api/auth/signup.js` / `login.js` / `me.js` / `role.js` — accounts, login, role switch
 - `api/_db.js` — Neon client + JWT / auth helpers + row mappers
 - `vercel.json` — SPA routing that leaves `/api` to the functions
-- `src/app/auth.ts`, `adminApi.ts`, `ordersApi.ts`, `sellerApi.ts`, `types.ts` — frontend clients + types
+- `src/app/auth.ts`, `adminApi.ts`, `ordersApi.ts`, `sellerApi.ts`, `messagesApi.ts`, `types.ts` — frontend clients + types

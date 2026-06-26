@@ -82,3 +82,19 @@ create index if not exists products_seller_idx on products (seller_id);
 -- With split-per-seller checkout every order belongs to one seller (NULL = official).
 alter table orders add column if not exists seller_id integer references users(id) on delete set null;
 create index if not exists orders_seller_idx on orders (seller_id);
+
+-- ─── Messages (buyer ↔ seller chat) ───────────────────────────────────────────
+-- A conversation thread = (product_id, buyer_id, seller_id). sender_id is whoever
+-- sent each message. read = whether the OTHER party has seen it.
+create table if not exists messages (
+  id         serial primary key,
+  product_id integer references products(id) on delete cascade,
+  buyer_id   integer not null references users(id) on delete cascade,
+  seller_id  integer not null references users(id) on delete cascade,
+  sender_id  integer not null references users(id) on delete cascade,
+  body       text not null,
+  read       boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists messages_thread_idx    on messages (product_id, buyer_id, seller_id, created_at);
+create index if not exists messages_recipient_idx on messages (buyer_id, seller_id);
