@@ -443,18 +443,6 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
 const fmt = (n: number) => `Rs. ${n.toLocaleString()}`;
 const discount = (orig: number, curr: number) => Math.round((1 - curr / orig) * 100);
 
-// iOS Safari zooms in when a small-font input gains focus. After a search runs
-// we blur the field and snap the viewport back to 1x, then restore it a moment
-// later so pinch-zoom still works — so the store never stays stuck zoomed-in.
-function resetMobileZoom() {
-  (document.activeElement as HTMLElement | null)?.blur?.();
-  const vp = document.querySelector('meta[name="viewport"]');
-  if (!vp) return;
-  const original = vp.getAttribute("content") || "width=device-width, initial-scale=1.0";
-  vp.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0");
-  window.setTimeout(() => vp.setAttribute("content", original), 350);
-}
-
 // ─── Pakistan date & time (Asia/Karachi) ──────────────────────────────────────
 // Every date shown in the dashboards is rendered in Pakistan time so sellers and
 // admin always see the same exact local date and time.
@@ -637,7 +625,7 @@ function Navbar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQ.trim()) { navigate(`/shop?q=${encodeURIComponent(searchQ)}`); setSearchOpen(false); setSearchQ(""); resetMobileZoom(); }
+    if (searchQ.trim()) { navigate(`/shop?q=${encodeURIComponent(searchQ)}`); setSearchOpen(false); setSearchQ(""); }
   };
 
   // Category links are built from the live catalog, so any new category a seller
@@ -772,7 +760,7 @@ function Navbar() {
                   {results.length === 0 ? (
                     <p className="px-4 py-3 text-sm text-[#6b7280]">No products match “{searchQ}”.</p>
                   ) : results.map(p => (
-                    <button key={p.id} onClick={() => { navigate(`/product/${p.id}`); setSearchOpen(false); setSearchQ(""); resetMobileZoom(); }}
+                    <button key={p.id} onClick={() => { navigate(`/product/${p.id}`); setSearchOpen(false); setSearchQ(""); }}
                       className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-[#F8F9FB] transition-colors border-b border-gray-50 last:border-0">
                       <ProductImage src={p.image} alt="" className="w-9 h-9 rounded-lg object-cover bg-gray-50 flex-shrink-0" />
                       <div className="flex-1 min-w-0">

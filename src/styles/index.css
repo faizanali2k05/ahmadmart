@@ -19,3 +19,15 @@
   border-bottom: 1px solid rgba(30, 64, 175, 0.08);
   box-shadow: 0 4px 16px rgba(30, 64, 175, 0.05);
 }
+
+/* Stop iOS Safari from auto-zooming when a form field is focused. The zoom only
+   happens when an input's font-size is under 16px, and after a search the page
+   would stay stuck zoomed-in. Forcing 16px on touch devices prevents the zoom
+   entirely — on phones/tablets only, so desktop sizing is untouched. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
