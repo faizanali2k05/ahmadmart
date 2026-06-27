@@ -102,6 +102,7 @@ export function rowToProduct(r) {
     rating: r.rating ?? 0,
     reviews: r.reviews ?? 0,
     badge: r.badge ?? undefined,
+    featured: r.featured ?? false,
     inStock: r.in_stock,
     isService: r.is_service || undefined,
     description: r.description || "",

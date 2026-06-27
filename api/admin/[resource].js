@@ -63,6 +63,18 @@ async function products(req, res) {
     res.status(200).json({ ok: true });
     return;
   }
+  // Feature / un-feature any product (admin only). Featured products are
+  // prioritised across the storefront. The column is ensured here so this works
+  // even if the schema migration hasn't been run yet.
+  if (req.method === "PATCH") {
+    const body = await readJsonBody(req);
+    if (!body.id) { res.status(400).json({ error: "Missing product id." }); return; }
+    await sql`alter table products add column if not exists featured boolean not null default false`;
+    const rows = await sql`update products set featured = ${!!body.featured}, updated_at = now() where id = ${body.id} returning *`;
+    if (!rows.length) { res.status(404).json({ error: "Product not found." }); return; }
+    res.status(200).json({ product: rowToProduct(rows[0]) });
+    return;
+  }
   res.status(405).json({ error: "Method not allowed" });
 }
 

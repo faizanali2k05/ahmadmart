@@ -12,6 +12,7 @@ export interface Product {
   rating: number;
   reviews: number;
   badge?: "new" | "sale" | "bestseller";
+  featured?: boolean; // admin-curated — featured products are prioritised everywhere
   inStock: boolean;
   isService?: boolean; // digital service — bought by contacting us on WhatsApp, not via cart
   description: string;

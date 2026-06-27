@@ -29,6 +29,7 @@ import type { Product } from "./types";
 import {
   fetchProducts as apiFetchProducts, createProduct as apiCreateProduct,
   updateProduct as apiUpdateProduct, deleteProduct as apiDeleteProduct,
+  setProductFeatured as apiSetProductFeatured,
   fetchAnalytics, seedProducts, type Analytics,
 } from "./adminApi";
 import {
@@ -533,6 +534,11 @@ function ProductCardBase({ product }: { product: Product }) {
           className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute top-3 left-3 flex flex-col gap-1">
+          {product.featured && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-black text-white px-2 py-0.5 rounded-full" style={{ background: "linear-gradient(135deg, #F97316, #ea580c)", boxShadow: "0 2px 8px rgba(249,115,22,0.4)" }}>
+              <Star size={9} className="fill-white" /> Featured
+            </span>
+          )}
           {product.badge && <Badge type={product.badge} />}
           {product.originalPrice && (
             <span className="text-[10px] font-bold bg-red-500 text-white px-2 py-0.5 rounded-full">
@@ -1012,7 +1018,10 @@ function HomePage() {
     return () => clearInterval(t);
   }, []);
 
-  const featured = products.filter(p => p.badge === "bestseller" || p.badge === "new").slice(0, 4);
+  const featured = [
+    ...products.filter(p => p.featured),
+    ...products.filter(p => !p.featured && (p.badge === "bestseller" || p.badge === "new")),
+  ].slice(0, 4);
   const bestsellers = [...products].sort((a, b) => b.reviews - a.reviews).slice(0, 8);
   const mobileAcc = products.filter(p => p.category === "Mobile Accessories").slice(0, 4);
   const clocks = products.filter(p => p.subcategory === "Wall Clocks");
@@ -1281,6 +1290,9 @@ function ShopPage() {
   else if (sort === "price-desc") filtered.sort((a, b) => b.price - a.price);
   else if (sort === "rating") filtered.sort((a, b) => b.rating - a.rating);
   else if (sort === "newest") filtered.sort((a, b) => (a.badge === "new" ? -1 : 1));
+  // Admin-featured products are always prioritised (shown first), keeping the
+  // chosen sort order within each group. Array.sort is stable.
+  filtered.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -3082,6 +3094,11 @@ function AdminProducts({ dbMode }: { dbMode: boolean }) {
     try { await apiDeleteProduct(p.id); await refreshProducts(); setMsg("Deleted."); }
     catch (e) { setErr(e instanceof Error ? e.message : "Delete failed"); }
   };
+  const toggleFeatured = async (p: Product) => {
+    setErr(""); setMsg("");
+    try { await apiSetProductFeatured(p.id, !p.featured); await refreshProducts(); setMsg(!p.featured ? `Featured "${p.name}".` : `Removed "${p.name}" from featured.`); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Could not update featured"); }
+  };
   const seed = async () => {
     setBusy(true); setErr(""); setMsg("");
     try { const r = await seedProducts(SEED_PRODUCTS); await refreshProducts(); setMsg(r.skipped ? (r.message || "Already seeded.") : `Seeded ${r.seeded} products.`); }
@@ -3115,9 +3132,15 @@ function AdminProducts({ dbMode }: { dbMode: boolean }) {
           <div key={p.id} className="flex items-center gap-3 p-3 border-b border-gray-100 last:border-0">
             <ProductImage src={p.image} alt="" className="w-12 h-12 rounded-lg object-cover bg-gray-50 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-[#111827] truncate">{p.name}</p>
-              <p className="text-xs text-[#6b7280]">{p.category} · {p.subcategory} · {fmt(p.price)}{p.priceNote ? ` ${p.priceNote}` : ""}{!p.inStock && <span className="text-red-500 font-semibold"> · Out of stock</span>}</p>
+              <p className="text-sm font-bold text-[#111827] truncate flex items-center gap-1.5">{p.name}{p.featured && <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-[#F97316] bg-orange-50 px-1.5 py-0.5 rounded-full flex-shrink-0"><Star size={9} className="fill-[#F97316]" /> Featured</span>}</p>
+              <p className="text-xs text-[#6b7280]">{p.category} · {p.subcategory} · {fmt(p.price)}{p.priceNote ? ` ${p.priceNote}` : ""}{!p.inStock && <span className="text-red-500 font-semibold"> · Out of stock</span>}{p.sellerStore ? ` · ${p.sellerStore}` : ""}</p>
             </div>
+            {dbMode && (
+              <button onClick={() => toggleFeatured(p)} title={p.featured ? "Remove from featured" : "Feature this product"}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1 ${p.featured ? "text-[#F97316] bg-orange-50 hover:bg-orange-100" : "text-[#6b7280] hover:bg-gray-100"}`}>
+                <Star size={13} className={p.featured ? "fill-[#F97316]" : ""} /> {p.featured ? "Featured" : "Feature"}
+              </button>
+            )}
             {dbMode && <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#1E40AF] hover:bg-blue-50">Edit</button>}
             {dbMode && <button onClick={() => remove(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50">Delete</button>}
           </div>

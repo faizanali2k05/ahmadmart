@@ -79,6 +79,9 @@ alter table users add column if not exists jazzcash_title  text;
 alter table products add column if not exists seller_id integer references users(id) on delete set null;
 create index if not exists products_seller_idx on products (seller_id);
 
+-- Admin-curated featured products (prioritised across the storefront).
+alter table products add column if not exists featured boolean not null default false;
+
 -- With split-per-seller checkout every order belongs to one seller (NULL = official).
 alter table orders add column if not exists seller_id integer references users(id) on delete set null;
 create index if not exists orders_seller_idx on orders (seller_id);

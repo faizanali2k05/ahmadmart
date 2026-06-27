@@ -34,6 +34,11 @@ export async function deleteProduct(id: number): Promise<void> {
   await send("/api/admin/products", "DELETE", { id });
 }
 
+/** Admin: feature / un-feature a product so it is prioritised across the store. */
+export async function setProductFeatured(id: number, featured: boolean): Promise<Product> {
+  return (await send("/api/admin/products", "PATCH", { id, featured })).product;
+}
+
 export interface Analytics {
   totals: {
     total: number; in_stock: number; out_of_stock: number; services: number;
