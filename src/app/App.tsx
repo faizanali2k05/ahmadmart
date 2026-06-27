@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, createContext, useCallback, useMemo, memo, type CSSProperties } from "react";
+import { useState, useEffect, useRef, useContext, createContext, useCallback, useMemo, memo, type CSSProperties } from "react";
 import { BrowserRouter, Routes, Route, Link, useNavigate, useParams, useLocation } from "react-router-dom";
 import ahmadMartLogo from "@/imports/ahmad-logo.png";
 import {
@@ -1750,7 +1750,6 @@ function ProductDetailPage() {
               </div>
             ))}
           </div>
-          <AskSeller product={product} />
         </div>
       </div>
 
@@ -1930,8 +1929,6 @@ function CheckoutPage() {
   const [copied, setCopied] = useState("");
   const [placedOrders, setPlacedOrders] = useState<Order[] | null>(null);
   const [orderBaseId] = useState(newOrderId());
-  const [payment, setPayment] = useState<"jazzcash" | "cod">("jazzcash");
-  const isCOD = payment === "cod";
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
   const [promo, setPromo] = useState("");
@@ -1983,7 +1980,6 @@ function CheckoutPage() {
     if (!form.phone.trim() || !/^0\d{9,10}$/.test(form.phone.trim())) e.phone = "Enter a valid WhatsApp number (e.g. 03001234567)";
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "Enter a valid email address";
     if (!form.address.trim()) e.address = "Complete shipping address is required";
-    else if (isCOD && !/multan/i.test(form.address)) e.address = "Cash on Delivery is available in Multan only. Enter a Multan delivery address, or pay with JazzCash.";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -2013,7 +2009,7 @@ function CheckoutPage() {
           discount: waiver || undefined,
           promoCode: waiver ? PROMO_CODE : undefined,
           total: groupTotal,
-          paymentMethod: isCOD ? "Cash on Delivery" : "JazzCash (Manual)",
+          paymentMethod: "WhatsApp",
           status: "Pending Approval",
           sellerId: g.sellerId,
           sellerStore: g.sellerStore,
@@ -2056,7 +2052,7 @@ function CheckoutPage() {
                 <p className="font-bold text-[#111827] text-sm truncate">{o.sellerStore || "Ahmad Mart"}</p>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">{o.status}</span>
               </div>
-              <p className="text-xs text-[#6b7280] mb-2">Order #{o.id} · {o.items.reduce((s, it) => s + it.qty, 0)} item(s) · <strong className="text-[#1E40AF]">{fmt(o.total)}</strong>{isCashOnDelivery(o) ? " (COD)" : ""}</p>
+              <p className="text-xs text-[#6b7280] mb-2">Order #{o.id} · {o.items.reduce((s, it) => s + it.qty, 0)} item(s) · <strong className="text-[#1E40AF]">{fmt(o.total)}</strong></p>
               <a href={whatsappOrderUrl(o)} target="_blank" rel="noopener noreferrer"
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-white font-bold text-sm transition-transform active:scale-95"
                 style={{ background: "#25D366", boxShadow: "0 4px 12px rgba(37,211,102,0.3)" }}>
@@ -2067,9 +2063,7 @@ function CheckoutPage() {
         </div>
 
         <div className="rounded-xl border border-green-200 bg-green-50 p-3 mb-4 text-xs text-green-700 text-left">
-          {isCOD
-            ? "Send each WhatsApp message to confirm your Cash on Delivery order. Cash is collected on delivery in Multan."
-            : "For each store: send the WhatsApp message, pay the JazzCash amount shown there, and attach your payment screenshot. The order then becomes Payment Received once approved."}
+          Send the WhatsApp message to each store to complete your payment with the seller. Your order becomes confirmed once the seller or admin approves it.
         </div>
 
         <button onClick={() => navigate("/account")} className="w-full py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm mb-2" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
@@ -2141,158 +2135,41 @@ function CheckoutPage() {
             </div>
           </div>
 
-          {/* Payment method selector */}
-          <div className="bg-white rounded-2xl p-6" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
-            <h3 className="font-bold text-[#111827] mb-4 flex items-center gap-2"><Tag size={18} className="text-[#F97316]" /> Payment Method</h3>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <button type="button" onClick={() => setPayment("jazzcash")}
-                className={`text-left rounded-xl border-2 p-4 transition-all ${!isCOD ? "border-[#1E40AF] bg-blue-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="flex items-center gap-2 font-bold text-[#111827] text-sm"><Smartphone size={16} className="text-[#1E40AF]" /> JazzCash</span>
-                  <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${!isCOD ? "border-[#1E40AF] bg-[#1E40AF]" : "border-gray-300"}`} />
-                </div>
-                <p className="text-xs text-[#6b7280]">Pay now, then send the screenshot on WhatsApp. Available nationwide.</p>
-              </button>
-              <button type="button" onClick={() => setPayment("cod")}
-                className={`text-left rounded-xl border-2 p-4 transition-all ${isCOD ? "border-[#059669] bg-emerald-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="flex items-center gap-2 font-bold text-[#111827] text-sm"><Truck size={16} className="text-[#059669]" /> Cash on Delivery</span>
-                  <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isCOD ? "border-[#059669] bg-[#059669]" : "border-gray-300"}`} />
-                </div>
-                <p className="text-xs text-[#6b7280]">Pay cash when it arrives. <strong className="text-[#059669]">Multan region only.</strong></p>
-              </button>
-            </div>
-          </div>
-
-          {/* JazzCash manual payment module */}
-          {!isCOD && (
+          {/* Payment — via WhatsApp */}
           <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
-            <div className="px-6 py-4 flex items-center gap-3" style={{ background: "linear-gradient(135deg, #1E40AF, #1e3a8a)" }}>
+            <div className="px-6 py-4 flex items-center gap-3" style={{ background: "linear-gradient(135deg, #128C7E, #25D366)" }}>
               <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
-                <Smartphone size={20} className="text-white" />
+                <MessageCircle size={20} className="text-white" />
               </div>
               <div>
-                <p className="font-black text-white text-base leading-tight">Pay with JazzCash</p>
-                <p className="text-blue-200 text-xs">Manual payment · verified by our team</p>
+                <p className="font-black text-white text-base leading-tight">Pay via WhatsApp</p>
+                <p className="text-green-50 text-xs">Complete your payment with the seller on WhatsApp</p>
               </div>
             </div>
-
             <div className="p-6">
-              {/* Per-store payment breakdown */}
-              <p className="text-xs font-bold uppercase tracking-wide text-[#9A3412] mb-2">Pay each store the exact amount</p>
-              <div className="space-y-3 mb-5">
-                {groups.map((g, i) => {
-                  const { groupTotal } = groupTotals(g, i);
-                  const num = g.sellerJazzcashNumber || JAZZCASH_NUMBER;
-                  const title = g.sellerJazzcashTitle || JAZZCASH_TITLE;
-                  return (
-                    <div key={i} className="rounded-2xl border border-[#FED7AA] p-4" style={{ background: "linear-gradient(135deg, #FFF7ED, #FFEDD5)" }}>
-                      <div className="flex items-center justify-between mb-2 gap-2">
-                        <p className="text-sm font-bold text-[#9A3412] truncate">{g.sellerStore || "Ahmad Mart"}</p>
-                        <p className="text-xl font-black text-[#F97316] flex-shrink-0">{fmt(groupTotal)}</p>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 rounded-xl bg-white/70 px-3 py-2">
-                        <div className="min-w-0">
-                          <p className="text-[11px] text-[#9A3412]">JazzCash · {title}</p>
-                          <p className="font-black text-[#111827] tracking-wide">{num}</p>
-                        </div>
-                        <button onClick={() => copy(num, `num${i}`)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1E40AF] text-white text-xs font-bold flex-shrink-0">
-                          {copied === `num${i}` ? <CheckCircle size={13} /> : <Copy size={13} />}
-                          {copied === `num${i}` ? "Copied" : "Copy"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Instructions */}
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 mb-5">
-                <p className="font-bold text-[#1E40AF] text-sm mb-3">How to pay</p>
-                <ol className="space-y-2.5">
-                  {[
-                    "Send the exact order amount to the JazzCash number above.",
-                    "Take a screenshot of the successful transaction.",
-                    "Fill in your details, then tap “Submit on WhatsApp”.",
-                    "Your order opens in WhatsApp — attach the screenshot there and send it to us. We'll verify it and confirm your order on WhatsApp.",
-                  ].map((text, i) => (
-                    <li key={i} className="flex gap-3 text-sm text-[#374151]">
-                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#1E40AF] text-white text-xs font-black flex items-center justify-center">{i + 1}</span>
-                      <span className="pt-0.5">{text}</span>
-                    </li>
-                  ))}
-                </ol>
-                <p className="text-xs text-green-700 mt-3 flex items-start gap-1.5">
-                  <MessageCircle size={14} className="flex-shrink-0 mt-0.5" />
-                  <span>When you place the order, each store's WhatsApp opens with the order and payment details for verification.</span>
-                </p>
-              </div>
-
-              <p className="text-[11px] text-[#6b7280] flex items-start gap-1.5">
-                <ShieldCheck size={14} className="text-[#1E40AF] flex-shrink-0 mt-0.5" />
-                This is a manual payment system. Your order stays <strong>Pending Approval</strong> until the admin confirms your payment — it becomes <strong>Payment Received</strong> after approval, never automatically.
-              </p>
-            </div>
-          </div>
-          )}
-
-          {/* Cash on Delivery module */}
-          {isCOD && (
-          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
-            <div className="px-6 py-4 flex items-center gap-3" style={{ background: "linear-gradient(135deg, #059669, #047857)" }}>
-              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
-                <Truck size={20} className="text-white" />
-              </div>
-              <div>
-                <p className="font-black text-white text-base leading-tight">Cash on Delivery</p>
-                <p className="text-emerald-100 text-xs">Pay in cash when your order arrives</p>
-              </div>
-            </div>
-
-            <div className="p-6">
-              {/* Amount due on delivery */}
-              <div className="rounded-2xl p-5 mb-5 text-center" style={{ background: "linear-gradient(135deg, #ECFDF5, #D1FAE5)", border: "1px solid #A7F3D0" }}>
-                <p className="text-xs font-bold uppercase tracking-wide text-[#065F46]">Amount Due on Delivery</p>
-                <p className="text-3xl sm:text-4xl font-black text-[#059669] mt-1">{fmt(grandTotal)}</p>
-                <p className="text-xs text-[#065F46] mt-1">Keep the <strong>exact</strong> amount ready for the rider.</p>
-              </div>
-
-              {/* Multan-only notice */}
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 mb-5 flex items-start gap-2.5">
-                <MapPin size={18} className="text-[#059669] flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-[#065F46]">Cash on Delivery is available in the <strong>Multan region only</strong>. Make sure your delivery address is inside Multan — orders outside Multan need JazzCash.</p>
-              </div>
-
-              {/* Instructions */}
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 mb-5">
+              <div className="rounded-xl border border-green-100 bg-green-50/60 p-4 mb-4">
                 <p className="font-bold text-[#065F46] text-sm mb-3">How it works</p>
                 <ol className="space-y-2.5">
                   {[
-                    "Make sure your delivery address is inside Multan.",
-                    "Fill in your details, then tap “Submit on WhatsApp”.",
-                    "We'll confirm your order on WhatsApp and dispatch it.",
-                    "Pay the exact amount in cash to the rider on delivery.",
+                    "Fill in your details on the left.",
+                    "Tap “Pay via WhatsApp” to place your order.",
+                    "Your order opens in WhatsApp with all the details — send it to the seller.",
+                    "Agree the payment with the seller on WhatsApp and pay. Your order is confirmed once approved.",
                   ].map((text, i) => (
                     <li key={i} className="flex gap-3 text-sm text-[#374151]">
-                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#059669] text-white text-xs font-black flex items-center justify-center">{i + 1}</span>
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#25D366] text-white text-xs font-black flex items-center justify-center">{i + 1}</span>
                       <span className="pt-0.5">{text}</span>
                     </li>
                   ))}
                 </ol>
-                <p className="text-xs text-green-700 mt-3 flex items-start gap-1.5">
-                  <MessageCircle size={14} className="flex-shrink-0 mt-0.5" />
-                  <span>When you place the order, each store's WhatsApp opens with your order for confirmation.</span>
-                </p>
               </div>
-
               <p className="text-[11px] text-[#6b7280] flex items-start gap-1.5">
-                <ShieldCheck size={14} className="text-[#059669] flex-shrink-0 mt-0.5" />
-                Your order stays <strong>Pending Approval</strong> until the admin confirms it on WhatsApp, then becomes <strong>Confirmed (COD)</strong> for delivery.
+                <ShieldCheck size={14} className="text-[#25D366] flex-shrink-0 mt-0.5" />
+                Your order stays <strong>Pending Approval</strong> until it's confirmed on WhatsApp. Nothing is charged automatically.
               </p>
             </div>
           </div>
-          )}
+
         </div>
 
         {/* Order Summary */}
@@ -2343,19 +2220,17 @@ function CheckoutPage() {
               <div className="flex justify-between text-sm"><span className="text-[#6b7280]">Subtotal</span><span className="font-semibold">{fmt(cartTotal)}</span></div>
               <div className="flex justify-between text-sm"><span className="text-[#6b7280]">Delivery {groups.length > 1 ? `(${groups.length} stores)` : ""}</span><span className="font-semibold">{fmt(totalDelivery)}</span></div>
               {totalWaiver > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Promo ({PROMO_CODE})</span><span>-{fmt(totalWaiver)}</span></div>}
-              <div className="flex justify-between text-sm"><span className="text-[#6b7280]">Payment</span><span className="font-semibold">{isCOD ? "Cash on Delivery" : "JazzCash"}</span></div>
-              <div className="flex justify-between font-black text-[#111827] text-base border-t border-gray-100 pt-2"><span>{isCOD ? "Due on Delivery" : "Total"}</span><span className="text-[#1E40AF]">{fmt(grandTotal)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-[#6b7280]">Payment</span><span className="font-semibold">WhatsApp</span></div>
+              <div className="flex justify-between font-black text-[#111827] text-base border-t border-gray-100 pt-2"><span>Total</span><span className="text-[#1E40AF]">{fmt(grandTotal)}</span></div>
             </div>
             <button onClick={handleSubmit} disabled={submitting}
               className="w-full py-3.5 rounded-xl text-white font-black text-sm transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
               style={{ background: "#25D366", boxShadow: "0 4px 16px rgba(37,211,102,0.35)" }}>
-              <MessageCircle size={18} /> {submitting ? "Placing order…" : `Place ${groups.length > 1 ? `${groups.length} Orders` : "Order"} — ${fmt(grandTotal)}`}
+              <MessageCircle size={18} /> {submitting ? "Placing order…" : `Pay via WhatsApp — ${fmt(grandTotal)}`}
             </button>
             {submitErr && <p className="text-xs text-red-500 font-semibold text-center mt-2">{submitErr}</p>}
             <p className="text-[11px] text-[#6b7280] text-center mt-3">
-              {isCOD
-                ? "We'll save your order and confirm it on WhatsApp. Cash is collected on delivery in Multan."
-                : "We'll save your order, then you send your JazzCash screenshot on WhatsApp for the admin to approve."}
+              We'll save your order, then it opens in WhatsApp so you can complete the payment with the seller. The order is confirmed once approved.
             </p>
           </div>
         </div>
@@ -3637,6 +3512,12 @@ function SellerPage() {
   const isSeller = !!user && (user.role === "seller" || user.role === "admin");
   const load = () => { sellerGetProducts().then(setProducts).catch(e => setErr(e instanceof Error ? e.message : "Failed to load products")); };
   useEffect(() => { if (isSeller) { load(); sellerGetAnalytics().then(setAnalytics).catch(() => {}); } }, [isSeller]);
+  // When the seller opens the add/edit form, bring it into view — the form sits
+  // below the dashboard, so without this the click felt like nothing happened.
+  const formRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editing !== null) requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [editing]);
 
   if (!authReady) return <div className="max-w-sm mx-auto px-4 py-20 text-center text-sm text-[#6b7280]">Loading…</div>;
   if (!user) return (
@@ -3736,7 +3617,9 @@ function SellerPage() {
       {(msg || err) && <div className={`mb-4 rounded-xl p-3 text-sm font-semibold ${err ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{err || msg}</div>}
 
       {editing !== null && (
-        <ProductForm initial={editing === "new" ? null : editing} busy={busy} onSave={save} onCancel={() => setEditing(null)} allowBadge={false} />
+        <div ref={formRef}>
+          <ProductForm initial={editing === "new" ? null : editing} busy={busy} onSave={save} onCancel={() => setEditing(null)} allowBadge={false} />
+        </div>
       )}
 
       <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
