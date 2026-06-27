@@ -1021,21 +1021,6 @@ function HomePage() {
                   ))}
                 </div>
               </div>
-              <div className="lg:w-[26rem] xl:w-[30rem] px-6 pb-8 lg:py-6 flex-shrink-0 relative w-full">
-                <div className="relative mx-auto" style={{ maxWidth: 380 }}>
-                  <div className="absolute inset-4 rounded-full bg-white/15 blur-3xl" />
-                  <div className="relative rounded-3xl bg-white/10 backdrop-blur-sm p-3 border border-white/15">
-                    <ProductImage src={slide.img} alt={slide.title}
-                      className="w-full h-48 sm:h-60 object-cover rounded-2xl"
-                      style={{ boxShadow: "0 12px 36px rgba(0,0,0,0.25)" }}
-                    />
-                  </div>
-                  <div className="absolute -bottom-3 right-1 bg-white rounded-xl px-3 py-2 flex items-center gap-2" style={{ boxShadow: "0 10px 28px rgba(0,0,0,0.22)" }}>
-                    <ShieldCheck size={20} className="text-[#1E40AF] flex-shrink-0" />
-                    <div><p className="text-xs font-black text-[#111827] leading-tight">{slide.promise}</p><p className="text-[10px] text-[#6b7280] leading-tight">Quality promise</p></div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         ))}
