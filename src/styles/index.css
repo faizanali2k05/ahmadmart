@@ -31,3 +31,30 @@
     font-size: 16px !important;
   }
 }
+
+/* ─── Entrance & scroll-reveal animations ─────────────────────────────────────
+   Products and sections start hidden and ease in as they scroll into view (JS
+   adds .is-visible). GPU-friendly (opacity/transform) and short, so it stays
+   smooth on phones. Respects prefers-reduced-motion. */
+@keyframes amFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Card reveal — opacity only, so it never fights the card's hover transform. */
+.reveal { opacity: 0; transition: opacity 0.55s ease; will-change: opacity; }
+.reveal.is-visible { opacity: 1; }
+
+/* Fade-up for non-interactive blocks (headings, sections). */
+.reveal-up {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal-up.is-visible { opacity: 1; transform: none; }
+
+/* Whole-page fade-in on every route change. */
+.page-in { animation: amFadeIn 0.4s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal-up { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .page-in { animation: none !important; }
+}

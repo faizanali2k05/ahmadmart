@@ -508,11 +508,32 @@ function Badge({ type }: { type: "new" | "sale" | "bestseller" }) {
   return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${map[type]}`}>{labels[type]}</span>;
 }
 
+// Adds `is-visible` to an element when it scrolls into view, triggering the CSS
+// reveal animation. One-shot; falls back to visible if IntersectionObserver is
+// unavailable so content is never stuck hidden.
+function useReveal<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") { el.classList.add("is-visible"); return; }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { el.classList.add("is-visible"); io.unobserve(el); }
+      }
+    }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return ref;
+}
+
 // ─── Product Card ─────────────────────────────────────────────────────────────
 function ProductCardBase({ product }: { product: Product }) {
   const { addToCart, toggleWishlist, inWishlist } = useContext(Store);
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
+  const cardRef = useReveal<HTMLDivElement>();
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -523,8 +544,9 @@ function ProductCardBase({ product }: { product: Product }) {
 
   return (
     <div
+      ref={cardRef}
       onClick={() => navigate(`/product/${product.id}`)}
-      className="group bg-white rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1"
+      className="reveal group bg-white rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1"
       style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08), 0 1px 4px rgba(0,0,0,0.06)" }}
     >
       <div className="relative overflow-hidden bg-gray-50" style={{ aspectRatio: "1/1" }}>
@@ -951,8 +973,9 @@ function Footer() {
 
 // ─── Section Header ───────────────────────────────────────────────────────────
 function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+  const ref = useReveal<HTMLDivElement>();
   return (
-    <div className="flex items-end justify-between mb-8">
+    <div ref={ref} className="reveal-up flex items-end justify-between mb-8">
       <div>
         <h2 className="text-2xl sm:text-3xl font-black text-[#111827]">{title}</h2>
         {subtitle && <p className="text-[#6b7280] mt-1 text-sm">{subtitle}</p>}
@@ -3699,7 +3722,7 @@ function AppShell() {
     <div className="min-h-screen bg-[#F8F9FB] overflow-x-hidden" style={{ fontFamily: "'Outfit', 'Inter', sans-serif" }}>
       <ScrollToTop />
       {!isAuth && <Navbar />}
-      <main>
+      <main key={location.pathname} className="page-in">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/shop" element={<ShopPage />} />
