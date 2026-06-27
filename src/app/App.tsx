@@ -565,16 +565,13 @@ function ProductCardBase({ product }: { product: Product }) {
             {product.priceNote && <p className="text-[11px] text-[#6b7280] font-medium">{product.priceNote}</p>}
           </div>
           {product.isService ? (
-            <a
-              href={serviceWhatsAppUrl(product)}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all duration-200 active:scale-95"
-              style={{ background: "#25D366", boxShadow: "0 4px 12px rgba(37,211,102,0.35)" }}
+            <button
+              onClick={e => { e.stopPropagation(); navigate(`/product/${product.id}`); }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all duration-200 active:scale-95 bg-[#1E40AF] hover:bg-[#1e3a8a]"
+              style={{ boxShadow: "0 4px 12px rgba(30,64,175,0.3)" }}
             >
-              <MessageCircle size={13} /> Chat
-            </a>
+              <ShoppingCart size={13} /> Buy
+            </button>
           ) : (
             <button
               onClick={handleAdd}
