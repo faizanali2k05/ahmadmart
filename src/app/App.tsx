@@ -45,6 +45,7 @@ import {
   sendMessage, getConversations, getThread, getUnreadCount,
   type Conversation, type ChatMessage,
 } from "./messagesApi";
+import { POLICY_LINKS, openPolicyPdf } from "./policyDocs";
 
 interface CartItem extends Product { qty: number; }
 interface WishlistItem extends Product {}
@@ -985,8 +986,10 @@ function Footer() {
           <div>
             <h4 className="font-bold text-white mb-4">Customer Care</h4>
             <ul className="space-y-2 mb-4">
-              {["Track Your Order", "Return Policy", "Privacy Policy", "Terms & Conditions", "FAQ"].map(l => (
-                <li key={l}><a href="#" className="text-gray-400 text-sm hover:text-[#F97316] transition-colors">{l}</a></li>
+              {POLICY_LINKS.map(l => (
+                <li key={l.id}>
+                  <button onClick={() => openPolicyPdf(l.id)} className="text-gray-400 text-sm hover:text-[#F97316] transition-colors text-left">{l.label}</button>
+                </li>
               ))}
             </ul>
             <a href="tel:+923405463601" className="flex items-center gap-2 text-sm text-gray-400 hover:text-[#F97316] transition-colors">
