@@ -508,22 +508,35 @@ function Badge({ type }: { type: "new" | "sale" | "bestseller" }) {
   return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${map[type]}`}>{labels[type]}</span>;
 }
 
+// A single shared IntersectionObserver reveals every element registered with it,
+// instead of creating one observer per card — much lighter when a page has many
+// products. When an element enters view it gets `is-visible` (CSS animates it in)
+// and is unobserved (one-shot).
+let _revealObserver: IntersectionObserver | null = null;
+function getRevealObserver(): IntersectionObserver | null {
+  if (typeof IntersectionObserver === "undefined") return null;
+  if (!_revealObserver) {
+    _revealObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { e.target.classList.add("is-visible"); _revealObserver?.unobserve(e.target); }
+      }
+    }, { threshold: 0.05, rootMargin: "0px 0px -40px 0px" });
+  }
+  return _revealObserver;
+}
+
 // Adds `is-visible` to an element when it scrolls into view, triggering the CSS
-// reveal animation. One-shot; falls back to visible if IntersectionObserver is
-// unavailable so content is never stuck hidden.
+// reveal animation. Falls back to visible if IntersectionObserver is unavailable
+// so content is never stuck hidden.
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (typeof IntersectionObserver === "undefined") { el.classList.add("is-visible"); return; }
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) { el.classList.add("is-visible"); io.unobserve(el); }
-      }
-    }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+    const io = getRevealObserver();
+    if (!io) { el.classList.add("is-visible"); return; }
     io.observe(el);
-    return () => io.disconnect();
+    return () => io.unobserve(el);
   }, []);
   return ref;
 }

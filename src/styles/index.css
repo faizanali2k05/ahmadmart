@@ -37,24 +37,20 @@
    adds .is-visible). GPU-friendly (opacity/transform) and short, so it stays
    smooth on phones. Respects prefers-reduced-motion. */
 @keyframes amFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes amFadeInUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
-/* Card reveal — opacity only, so it never fights the card's hover transform. */
-.reveal { opacity: 0; transition: opacity 0.55s ease; will-change: opacity; }
-.reveal.is-visible { opacity: 1; }
-
-/* Fade-up for non-interactive blocks (headings, sections). */
-.reveal-up {
-  opacity: 0;
-  transform: translateY(16px);
-  transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity, transform;
-}
-.reveal-up.is-visible { opacity: 1; transform: none; }
+/* Reveal uses a ONE-SHOT animation (not a transition) so it never overrides an
+   element's own hover/press transitions, and needs no permanent `will-change`
+   (which would create dozens of GPU layers and make mobile scrolling janky). */
+.reveal { opacity: 0; }
+.reveal.is-visible { animation: amFadeIn 0.5s ease forwards; }
+.reveal-up { opacity: 0; }
+.reveal-up.is-visible { animation: amFadeInUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 
 /* Whole-page fade-in on every route change. */
-.page-in { animation: amFadeIn 0.4s ease both; }
+.page-in { animation: amFadeIn 0.35s ease both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal, .reveal-up { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .reveal, .reveal-up { opacity: 1 !important; animation: none !important; }
   .page-in { animation: none !important; }
 }
