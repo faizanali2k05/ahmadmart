@@ -21,6 +21,7 @@ export interface Product {
   // Marketplace: which seller's store this product belongs to (absent = official Ahmad Mart).
   sellerId?: number;
   sellerStore?: string;
+  sellerCity?: string;
   sellerWhatsapp?: string;
   sellerJazzcashNumber?: string;
   sellerJazzcashTitle?: string;

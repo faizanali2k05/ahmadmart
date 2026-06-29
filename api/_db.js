@@ -111,6 +111,7 @@ export function rowToProduct(r) {
     specs: r.specs || {},
     sellerId: r.seller_id ?? undefined,
     sellerStore: r.seller_store ?? undefined,
+    sellerCity: r.seller_city ?? undefined,
     sellerWhatsapp: r.seller_whatsapp ?? undefined,
     sellerJazzcashNumber: r.seller_jazzcash_number ?? undefined,
     sellerJazzcashTitle: r.seller_jazzcash_title ?? undefined,

@@ -627,7 +627,7 @@ function ProductCardBase({ product }: { product: Product }) {
       </div>
       <div className="p-4">
         <p className="text-xs text-[#F97316] font-semibold mb-1">{product.subcategory}</p>
-        {product.sellerStore && <p className="text-[11px] text-[#6b7280] mb-1 truncate">Sold by <span className="font-semibold text-[#374151]">{product.sellerStore}</span></p>}
+        {product.sellerStore && <p className="text-[11px] text-[#6b7280] mb-1 truncate">Sold by <span className="font-semibold text-[#374151]">{product.sellerStore}</span>{product.sellerCity ? ` · ${product.sellerCity}` : ""}</p>}
         <h3 className="font-semibold text-[#111827] text-sm leading-snug mb-2 line-clamp-2 group-hover:text-[#1E40AF] transition-colors">{product.name}</h3>
         {!product.isService && product.reviews > 0 && (
           <div className="flex items-center gap-2 mb-3">
@@ -1779,8 +1779,13 @@ function ProductDetailPage() {
           <p className="text-sm font-semibold text-[#F97316] mb-2">{product.subcategory}</p>
           <h1 className="text-2xl sm:text-3xl font-black text-[#111827] mb-3 leading-tight">{product.name}</h1>
           {product.sellerStore && (
-            <div className="inline-flex items-center gap-1.5 mb-3 px-3 py-1.5 rounded-full bg-[#EFF6FF] text-[#1E40AF] text-xs font-bold">
-              <User size={13} /> Sold by {product.sellerStore}
+            <div className="mb-3">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#EFF6FF] text-[#1E40AF] text-xs font-bold">
+                <User size={13} /> Sold by {product.sellerStore}
+              </div>
+              {product.sellerCity && (
+                <p className="text-xs text-[#6b7280] mt-1 flex items-center gap-1"><MapPin size={11} className="text-[#F97316]" /> {product.sellerCity}</p>
+              )}
             </div>
           )}
 
