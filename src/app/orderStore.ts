@@ -56,8 +56,8 @@ export interface Order {
   items: OrderItem[];
   subtotal: number;
   shipping: number;
-  discount?: number;   // amount waived by a promo code (e.g. Rs. 100 off delivery)
-  promoCode?: string;  // the promo code that was applied, if any
+  discount?: number;   // legacy / reserved; no discounts are applied currently
+  promoCode?: string;  // legacy / reserved
   total: number;
   proofImage?: string; // optional — payment proof is sent/verified on WhatsApp
   proofName?: string;

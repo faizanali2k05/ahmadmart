@@ -182,8 +182,8 @@ export const POLICY_DOCS: Record<PolicyId, PolicyDoc> = {
       {
         heading: "Delivery and Charges",
         bullets: [
-          "A flat delivery charge of Rs. 230 applies per order.",
-          "The promo code DELIVERY100 gives Rs. 100 off the delivery charge on Cash on Delivery (Multan) orders only. It does not apply to JazzCash orders.",
+          "Delivery charges are set by each seller and may differ from product to product.",
+          "Your exact delivery charge is shown clearly at checkout before you place the order.",
           "Delivery times are estimates and may vary.",
         ],
       },
@@ -216,7 +216,7 @@ export const POLICY_DOCS: Record<PolicyId, PolicyDoc> = {
       {
         faqs: [
           { q: "What payment methods do you accept?", a: `We accept JazzCash (paid through WhatsApp) across Pakistan, and Cash on Delivery in the Multan region only. Contact us on WhatsApp at ${WHATSAPP_DISPLAY} if you need help.` },
-          { q: "What are the delivery charges?", a: "A flat charge of Rs. 230 applies per order. With the promo code DELIVERY100 you get Rs. 100 off the delivery charge on Cash on Delivery (Multan) orders only." },
+          { q: "What are the delivery charges?", a: "Delivery charges are set by each seller and can vary by product. You always see the exact delivery charge at checkout before placing your order." },
           { q: "Where is Cash on Delivery available?", a: "Cash on Delivery is available in the Multan region only. For all other areas, please pay with JazzCash through WhatsApp." },
           { q: "How long does delivery take?", a: "Multan usually takes 1 to 2 working days, and the rest of Pakistan usually takes 3 to 5 working days. Times may vary on holidays and busy periods." },
           { q: "How do I place an order?", a: "Add items to your cart or tap Buy Now, fill in your details at checkout, choose JazzCash or Cash on Delivery, then place the order. It opens on WhatsApp so you can complete payment and confirm." },

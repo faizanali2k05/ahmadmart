@@ -2026,8 +2026,8 @@ function CheckoutPage() {
   const [copied, setCopied] = useState("");
   const [placedOrders, setPlacedOrders] = useState<Order[] | null>(null);
   const [orderBaseId] = useState(newOrderId());
-  // Two delivery/payment options: JazzCash (paid via WhatsApp, nationwide) or
-  // Cash on Delivery (Multan only). The promo code applies to COD orders only.
+  // Two payment options: JazzCash (paid via WhatsApp, nationwide) or Cash on
+  // Delivery (Multan region only).
   const [payment, setPayment] = useState<"jazzcash" | "cod">("jazzcash");
   const isCOD = payment === "cod";
   const [submitting, setSubmitting] = useState(false);
@@ -2240,7 +2240,7 @@ function CheckoutPage() {
                   <span className="flex items-center gap-2 font-bold text-[#111827] text-sm"><Truck size={16} className="text-[#059669]" /> Cash on Delivery</span>
                   <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isCOD ? "border-[#059669] bg-[#059669]" : "border-gray-300"}`} />
                 </div>
-                <p className="text-xs text-[#6b7280]">Pay cash when it arrives. <strong className="text-[#059669]">Multan only</strong> · promo code eligible.</p>
+                <p className="text-xs text-[#6b7280]">Pay cash when it arrives. <strong className="text-[#059669]">Multan region only</strong>.</p>
               </button>
             </div>
           </div>
