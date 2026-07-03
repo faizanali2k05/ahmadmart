@@ -769,20 +769,25 @@ function Navbar() {
   return (
     <>
       <nav className={`fixed top-0 left-0 right-0 z-50 glass-nav transition-all duration-300 ${scrolled ? "shadow-lg" : ""}`}>
-        {/* Seller promo bar — continuously scrolling */}
-        <Link to="/register" className="block bg-[#1E40AF] text-white py-2 overflow-hidden hover:bg-[#1e3a8a] transition-colors">
+        {/* Promo bar — continuously scrolling, alternating two messages */}
+        <div className="bg-[#1E40AF] text-white py-2 overflow-hidden">
           <div className="flex w-max animate-marquee">
             {[0, 1].map(g => (
               <div key={g} className="flex shrink-0" aria-hidden={g === 1}>
-                {[0, 1, 2, 3].map(i => (
-                  <span key={i} className="px-10 text-xs sm:text-sm font-semibold whitespace-nowrap">
+                {[0, 1].flatMap(i => [
+                  <Link key={`everything${i}`} to="/shop"
+                    className="px-10 text-xs sm:text-sm font-semibold whitespace-nowrap hover:underline">
+                    ✅ This store has everything that you need
+                  </Link>,
+                  <Link key={`sell${i}`} to="/register"
+                    className="px-10 text-xs sm:text-sm font-semibold whitespace-nowrap hover:underline">
                     🛍️ Sell your products on Ahmad Mart with <span className="text-[#F97316] font-bold">0% commission</span> — start selling today
-                  </span>
-                ))}
+                  </Link>,
+                ])}
               </div>
             ))}
           </div>
-        </Link>
+        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
@@ -829,12 +834,31 @@ function Navbar() {
                   </button>
                   <div className="absolute right-0 top-full pt-2 hidden group-hover:block z-50">
                     <div className="bg-white rounded-xl border border-gray-100 py-2 min-w-[220px] max-h-[70vh] overflow-y-auto" style={{ boxShadow: "0 14px 36px rgba(30,64,175,0.16)" }}>
-                      {moreCats.map(c => (
-                        <Link key={c} to={`/shop?cat=${encodeURIComponent(c)}`}
-                          className="block px-4 py-2 text-sm font-medium text-[#374151] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">
-                          {c}
-                        </Link>
-                      ))}
+                      {moreCats.map(c => {
+                        const subs = catTree[c] || [];
+                        return (
+                          <div key={c} className="relative group/item">
+                            <Link to={`/shop?cat=${encodeURIComponent(c)}`}
+                              className="flex items-center justify-between gap-2 px-4 py-2 text-sm font-medium text-[#374151] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">
+                              {c}
+                              {subs.length > 0 && <ChevronRight size={13} className="text-gray-400 group-hover/item:text-[#1E40AF] flex-shrink-0" />}
+                            </Link>
+                            {subs.length > 0 && (
+                              <div className="absolute right-full top-0 pr-1 hidden group-hover/item:block">
+                                <div className="bg-white rounded-xl border border-gray-100 py-2 min-w-[200px]" style={{ boxShadow: "0 14px 36px rgba(30,64,175,0.16)" }}>
+                                  <Link to={`/shop?cat=${encodeURIComponent(c)}`} className="block px-4 py-2 text-sm font-bold text-[#1E40AF] hover:bg-[#EFF6FF] transition-colors">All {c}</Link>
+                                  {subs.map(s => (
+                                    <Link key={s} to={`/shop?sub=${encodeURIComponent(s)}`}
+                                      className="block px-4 py-2 text-sm font-medium text-[#374151] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">
+                                      {s}
+                                    </Link>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
