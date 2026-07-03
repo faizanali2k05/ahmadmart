@@ -35,3 +35,15 @@ export async function adminGetOrders(): Promise<Order[]> {
 export async function adminUpdateOrderStatus(id: string, status: OrderStatus): Promise<Order> {
   return (await send("/api/admin/orders", "PATCH", { id, status })).order as Order;
 }
+/** Admin: permanently delete an order. */
+export async function adminDeleteOrder(id: string): Promise<void> {
+  await send("/api/admin/orders", "DELETE", { id });
+}
+/** A seller's own orders, newest first. */
+export async function sellerGetOrders(): Promise<Order[]> {
+  return (await send("/api/seller/orders", "GET")).orders as Order[];
+}
+/** Seller: change the status of one of their own orders. */
+export async function sellerUpdateOrderStatus(id: string, status: OrderStatus): Promise<Order> {
+  return (await send("/api/seller/orders", "PATCH", { id, status })).order as Order;
+}

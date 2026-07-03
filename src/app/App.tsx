@@ -13,7 +13,7 @@ import {
 import {
   JAZZCASH_NUMBER, JAZZCASH_TITLE, WHATSAPP_DISPLAY, WHATSAPP_NUMBER,
   ORDER_STATUSES, newOrderId,
-  sendOrderEmail, whatsappOrderUrl, toWaNumber, isCashOnDelivery,
+  sendOrderEmail, whatsappOrderUrl, whatsappDeliveredUrl, toWaNumber, isCashOnDelivery,
   fileToCompressedDataURL, validateProofFile,
   type Order, type OrderStatus,
 } from "./orderStore";
@@ -21,7 +21,8 @@ import {
   getProductReviews, saveReview, newReviewId, type UserReview,
 } from "./reviewStore";
 import {
-  createOrder, getMyOrders, adminGetOrders, adminUpdateOrderStatus,
+  createOrder, getMyOrders, adminGetOrders, adminUpdateOrderStatus, adminDeleteOrder,
+  sellerGetOrders, sellerUpdateOrderStatus,
 } from "./ordersApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -2967,6 +2968,90 @@ const STATUS_STYLE: Record<OrderStatus, { bg: string; text: string }> = {
   "Cancelled": { bg: "#FEF2F2", text: "#B91C1C" },
 };
 
+// Order card shared by the admin's and the seller's order-management views —
+// same buyer details, product list and status controls either side uses to
+// approve/ship/deliver/cancel. `onDelete` is admin-only (sellers can't delete
+// orders); passing it in adds a delete button to the card.
+function OrderCard({ order: o, onSetStatus, onDelete }: {
+  order: Order;
+  onSetStatus: (id: string, status: OrderStatus) => void;
+  onDelete?: (o: Order) => void;
+}) {
+  const approve = () => onSetStatus(o.id, isCashOnDelivery(o) ? "Confirmed (COD)" : "Payment Received");
+  return (
+    <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="flex flex-col lg:flex-row gap-5">
+        {/* Verify payment proof on WhatsApp */}
+        <a href={`https://wa.me/${toWaNumber(o.phone)}`} target="_blank" rel="noopener noreferrer"
+          className="w-full lg:w-44 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-green-200 bg-green-50 p-4 text-center hover:bg-green-100 transition-colors flex-shrink-0 min-h-[130px]">
+          <MessageCircle size={28} className="text-green-600" />
+          <p className="text-xs font-bold text-green-800">{isCashOnDelivery(o) ? "Confirm Cash on Delivery order on WhatsApp" : "Verify payment proof on WhatsApp"}</p>
+          <span className="text-[11px] font-semibold text-green-600 underline">Open chat with {o.name.split(" ")[0]}</span>
+        </a>
+
+        {/* Details */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="font-black text-[#1E40AF]">#{o.id}</span>
+              <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: STATUS_STYLE[o.status].bg, color: STATUS_STYLE[o.status].text }}>{o.status}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#6b7280]">{new Date(o.createdAt).toLocaleString()}</span>
+              {onDelete && (
+                <button onClick={() => onDelete(o)} title="Delete this order"
+                  className="w-7 h-7 grid place-items-center rounded-lg text-red-500 hover:bg-red-50 transition-colors">
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm mb-3">
+            <p><span className="text-[#6b7280]">Name:</span> <span className="font-semibold text-[#111827]">{o.name}</span></p>
+            <p><span className="text-[#6b7280]">WhatsApp:</span> <a href={`https://wa.me/${toWaNumber(o.phone)}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-green-600 inline-flex items-center gap-1"><MessageCircle size={12} /> {o.phone}</a></p>
+            {o.email && <p className="truncate"><span className="text-[#6b7280]">Email:</span> <a href={`mailto:${o.email}`} className="font-semibold text-[#1E40AF]">{o.email}</a></p>}
+            <p><span className="text-[#6b7280]">Total:</span> <span className="font-black text-[#1E40AF]">{fmt(o.total)}</span></p>
+            <p><span className="text-[#6b7280]">Payment:</span> <span className={`font-bold ${isCashOnDelivery(o) ? "text-[#059669]" : "text-[#1E40AF]"}`}>{o.paymentMethod}</span></p>
+            <p className="sm:col-span-2"><span className="text-[#6b7280]">Address:</span> <span className="font-semibold text-[#111827]">{o.address}</span></p>
+            {o.notes && <p className="sm:col-span-2"><span className="text-[#6b7280]">Notes:</span> <span className="text-[#374151]">{o.notes}</span></p>}
+          </div>
+
+          <div className="rounded-xl bg-[#F8F9FB] p-3 mb-3">
+            <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1.5">Products</p>
+            <div className="space-y-1">
+              {o.items.map(it => (
+                <div key={it.id} className="flex justify-between text-sm">
+                  <span className="text-[#374151] truncate pr-2">{it.name} <span className="text-[#6b7280]">× {it.qty}</span></span>
+                  <span className="font-semibold text-[#111827] flex-shrink-0">{fmt(it.price * it.qty)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {o.status === "Pending Approval" && (
+            <button onClick={approve}
+              className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#059669] text-white text-xs font-black hover:bg-[#047857] transition-colors">
+              <CheckCircle size={14} /> Approve order → {isCashOnDelivery(o) ? "Confirmed (COD)" : "Payment Received"}
+            </button>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-[#6b7280]">Update status:</span>
+            {ORDER_STATUSES.map(s => (
+              <button key={s} onClick={() => onSetStatus(o.id, s)}
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${o.status === s ? "" : "bg-gray-100 text-[#374151] hover:bg-gray-200"}`}
+                style={o.status === s ? { background: STATUS_STYLE[s].bg, color: STATUS_STYLE[s].text, outline: `1.5px solid ${STATUS_STYLE[s].text}` } : undefined}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin: Analytics dashboard ───────────────────────────────────────────────
 function AdminAnalytics({ dbMode }: { dbMode: boolean }) {
   const [data, setData] = useState<Analytics | null>(null);
@@ -3608,12 +3693,25 @@ function AdminPage() {
     setBusy(false);
   };
   const setStatus = async (id: string, status: OrderStatus) => {
+    // Marking an order Delivered opens a pre-filled WhatsApp message to the buyer —
+    // opened synchronously (before the await below) so browsers don't treat it as
+    // an unrequested popup.
+    if (status === "Delivered") {
+      const o = orders.find(o => o.id === id);
+      if (o) window.open(whatsappDeliveredUrl(o), "_blank", "noopener,noreferrer");
+    }
     try {
       const updated = await adminUpdateOrderStatus(id, status);
       setOrders(prev => prev.map(o => (o.id === id ? updated : o)));
     } catch { /* ignore — keep current state */ }
   };
-  const approve = (o: Order) => setStatus(o.id, isCashOnDelivery(o) ? "Confirmed (COD)" : "Payment Received");
+  const deleteOrder = async (o: Order) => {
+    if (!window.confirm(`Permanently delete order #${o.id} (${o.name})? This cannot be undone.`)) return;
+    try {
+      await adminDeleteOrder(o.id);
+      setOrders(prev => prev.filter(x => x.id !== o.id));
+    } catch { /* ignore */ }
+  };
 
   if (!authReady) return <div className="max-w-sm mx-auto px-4 py-20 text-center text-sm text-[#6b7280]">Loading…</div>;
 
@@ -3691,70 +3789,7 @@ function AdminPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {orders.map(o => (
-            <div key={o.id} className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
-              <div className="flex flex-col lg:flex-row gap-5">
-                {/* Verify payment proof on WhatsApp */}
-                <a href={`https://wa.me/${toWaNumber(o.phone)}`} target="_blank" rel="noopener noreferrer"
-                  className="w-full lg:w-44 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-green-200 bg-green-50 p-4 text-center hover:bg-green-100 transition-colors flex-shrink-0 min-h-[130px]">
-                  <MessageCircle size={28} className="text-green-600" />
-                  <p className="text-xs font-bold text-green-800">{isCashOnDelivery(o) ? "Confirm Cash on Delivery order on WhatsApp" : "Verify payment proof on WhatsApp"}</p>
-                  <span className="text-[11px] font-semibold text-green-600 underline">Open chat with {o.name.split(" ")[0]}</span>
-                </a>
-
-                {/* Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-[#1E40AF]">#{o.id}</span>
-                      <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: STATUS_STYLE[o.status].bg, color: STATUS_STYLE[o.status].text }}>{o.status}</span>
-                    </div>
-                    <span className="text-xs text-[#6b7280]">{new Date(o.createdAt).toLocaleString()}</span>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm mb-3">
-                    <p><span className="text-[#6b7280]">Name:</span> <span className="font-semibold text-[#111827]">{o.name}</span></p>
-                    <p><span className="text-[#6b7280]">WhatsApp:</span> <a href={`https://wa.me/${toWaNumber(o.phone)}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-green-600 inline-flex items-center gap-1"><MessageCircle size={12} /> {o.phone}</a></p>
-                    {o.email && <p className="truncate"><span className="text-[#6b7280]">Email:</span> <a href={`mailto:${o.email}`} className="font-semibold text-[#1E40AF]">{o.email}</a></p>}
-                    <p><span className="text-[#6b7280]">Total:</span> <span className="font-black text-[#1E40AF]">{fmt(o.total)}</span></p>
-                    <p><span className="text-[#6b7280]">Payment:</span> <span className={`font-bold ${isCashOnDelivery(o) ? "text-[#059669]" : "text-[#1E40AF]"}`}>{o.paymentMethod}</span></p>
-                    <p className="sm:col-span-2"><span className="text-[#6b7280]">Address:</span> <span className="font-semibold text-[#111827]">{o.address}</span></p>
-                    {o.notes && <p className="sm:col-span-2"><span className="text-[#6b7280]">Notes:</span> <span className="text-[#374151]">{o.notes}</span></p>}
-                  </div>
-
-                  <div className="rounded-xl bg-[#F8F9FB] p-3 mb-3">
-                    <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1.5">Products</p>
-                    <div className="space-y-1">
-                      {o.items.map(it => (
-                        <div key={it.id} className="flex justify-between text-sm">
-                          <span className="text-[#374151] truncate pr-2">{it.name} <span className="text-[#6b7280]">× {it.qty}</span></span>
-                          <span className="font-semibold text-[#111827] flex-shrink-0">{fmt(it.price * it.qty)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {o.status === "Pending Approval" && (
-                    <button onClick={() => approve(o)}
-                      className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#059669] text-white text-xs font-black hover:bg-[#047857] transition-colors">
-                      <CheckCircle size={14} /> Approve order → {isCashOnDelivery(o) ? "Confirmed (COD)" : "Payment Received"}
-                    </button>
-                  )}
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-[#6b7280]">Update status:</span>
-                    {ORDER_STATUSES.map(s => (
-                      <button key={s} onClick={() => setStatus(o.id, s)}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${o.status === s ? "" : "bg-gray-100 text-[#374151] hover:bg-gray-200"}`}
-                        style={o.status === s ? { background: STATUS_STYLE[s].bg, color: STATUS_STYLE[s].text, outline: `1.5px solid ${STATUS_STYLE[s].text}` } : undefined}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+          {orders.map(o => <OrderCard key={o.id} order={o} onSetStatus={setStatus} onDelete={deleteOrder} />)}
         </div>
       )}
         </div>
@@ -3779,6 +3814,22 @@ function SellerPage() {
   const [bulkDelivery, setBulkDelivery] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  const loadOrders = () => { sellerGetOrders().then(setOrders).catch(() => {}); };
+  const setOrderStatus = async (id: string, status: OrderStatus) => {
+    // Marking an order Delivered opens a pre-filled WhatsApp message to the buyer —
+    // opened synchronously (before the await below) so browsers don't treat it as
+    // an unrequested popup.
+    if (status === "Delivered") {
+      const o = orders.find(o => o.id === id);
+      if (o) window.open(whatsappDeliveredUrl(o), "_blank", "noopener,noreferrer");
+    }
+    try {
+      const updated = await sellerUpdateOrderStatus(id, status);
+      setOrders(prev => prev.map(o => (o.id === id ? updated : o)));
+    } catch { /* ignore — keep current state */ }
+  };
 
   const openStoreEdit = () => {
     setStoreForm({ storeName: user?.storeName || "", whatsapp: user?.whatsapp || "", city: user?.city || "", jazzcashNumber: user?.jazzcashNumber || "", jazzcashTitle: user?.jazzcashTitle || "" });
@@ -3809,7 +3860,7 @@ function SellerPage() {
   const [analytics, setAnalytics] = useState<SalesAnalytics | null>(null);
   const isSeller = !!user && (user.role === "seller" || user.role === "admin");
   const load = () => { sellerGetProducts().then(setProducts).catch(e => setErr(e instanceof Error ? e.message : "Failed to load products")); };
-  useEffect(() => { if (isSeller) { load(); sellerGetAnalytics().then(setAnalytics).catch(() => {}); } }, [isSeller]);
+  useEffect(() => { if (isSeller) { load(); sellerGetAnalytics().then(setAnalytics).catch(() => {}); loadOrders(); } }, [isSeller]);
   // When the seller opens the add/edit form, bring it into view — the form sits
   // below the dashboard, so without this the click felt like nothing happened.
   const formRef = useRef<HTMLDivElement>(null);
@@ -3893,6 +3944,27 @@ function SellerPage() {
         {analytics
           ? <SalesAnalyticsView data={analytics} />
           : <div className="bg-white rounded-2xl p-6 text-center text-sm text-[#6b7280] border border-gray-100">Loading your sales…</div>}
+      </div>
+
+      {/* Your orders — approve, mark payment received, ship, deliver or cancel */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="font-black text-[#111827] flex items-center gap-2"><Truck size={18} className="text-[#1E40AF]" /> Your orders</h2>
+          <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
+            <RefreshCw size={15} /> Refresh
+          </button>
+        </div>
+        {orders.length === 0 ? (
+          <div className="bg-white rounded-2xl p-10 text-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+            <Package size={44} className="mx-auto text-gray-300 mb-3" />
+            <p className="font-bold text-[#111827] mb-1">No orders yet</p>
+            <p className="text-sm text-[#6b7280]">Orders placed for your products will appear here.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {orders.map(o => <OrderCard key={o.id} order={o} onSetStatus={setOrderStatus} />)}
+          </div>
+        )}
       </div>
 
       {storeOpen && (

@@ -151,6 +151,14 @@ async function orders(req, res) {
     res.status(200).json({ order: rowToOrder(rows[0]) });
     return;
   }
+  if (req.method === "DELETE") {
+    const body = await readJsonBody(req);
+    const id = body.id ?? req.query?.id;
+    if (!id) { res.status(400).json({ error: "Missing order id." }); return; }
+    await sql`delete from orders where id = ${id}`;
+    res.status(200).json({ ok: true });
+    return;
+  }
   res.status(405).json({ error: "Method not allowed" });
 }
 

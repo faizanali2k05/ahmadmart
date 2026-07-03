@@ -178,6 +178,21 @@ export function whatsappOrderUrl(order: Order): string {
   return `https://wa.me/${number}?text=${encodeURIComponent(buildWhatsAppText(order))}`;
 }
 
+/** wa.me link, pre-filled with a delivery confirmation, to the BUYER's WhatsApp —
+ *  opened automatically when a seller/admin marks an order "Delivered". */
+export function whatsappDeliveredUrl(order: Order): string {
+  const text = [
+    `Assalam-o-Alaikum ${order.name}! 👋`,
+    ``,
+    `Aapka order *#${order.id}* deliver ho chuka hai. Ahmad Mart se kharidari karne ka shukriya! 🙏`,
+    ``,
+    ...order.items.map(i => `• ${i.name} × ${i.qty}`),
+    ``,
+    `Total: Rs. ${order.total}`,
+  ].join("\n");
+  return `https://wa.me/${toWaNumber(order.phone)}?text=${encodeURIComponent(text)}`;
+}
+
 // ─── Image handling ───────────────────────────────────────────────────────────
 export const ACCEPTED_PROOF_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 export const MAX_PROOF_BYTES = 10 * 1024 * 1024; // 10 MB
