@@ -466,6 +466,8 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number) => `Rs. ${n.toLocaleString()}`;
+// Compact count for "sold" badges — 1,234 → "1.2k".
+const fmtCount = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(n));
 const discount = (orig: number, curr: number) => Math.round((1 - curr / orig) * 100);
 // Fisher-Yates shuffle — used to show the shop's catalog in random order.
 function shuffled<T>(arr: T[]): T[] {
@@ -640,10 +642,15 @@ function ProductCardBase({ product }: { product: Product }) {
         <p className="text-xs text-[#F97316] font-semibold mb-1">{product.subcategory}</p>
         {product.sellerStore && <p className="text-[11px] text-[#6b7280] mb-1 truncate">Sold by <span className="font-semibold text-[#374151]">{product.sellerStore}</span>{product.sellerCity ? ` · ${product.sellerCity}` : ""}</p>}
         <h3 className="font-semibold text-[#111827] text-sm leading-snug mb-2 line-clamp-2 group-hover:text-[#1E40AF] transition-colors">{product.name}</h3>
-        {!product.isService && product.reviews > 0 && (
-          <div className="flex items-center gap-2 mb-3">
-            <Stars rating={product.rating} />
-            <span className="text-xs text-gray-400">({product.reviews})</span>
+        {!product.isService && (product.reviews > 0 || !!product.sold) && (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {product.reviews > 0 && (
+              <>
+                <Stars rating={product.rating} />
+                <span className="text-xs text-gray-400">({product.reviews})</span>
+              </>
+            )}
+            {!!product.sold && <span className="text-xs text-gray-400">{fmtCount(product.sold)} sold</span>}
           </div>
         )}
         <div className="flex items-center justify-between">
@@ -1843,9 +1850,10 @@ function ProductDetailPage() {
             </div>
           )}
 
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
             {!product.isService && product.reviews > 0 && <Stars rating={product.rating} size={16} />}
             {!product.isService && product.reviews > 0 && <span className="text-sm text-[#6b7280]">({product.reviews} reviews)</span>}
+            {!product.isService && !!product.sold && <span className="text-sm text-[#6b7280]">{fmtCount(product.sold)} sold</span>}
             <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${product.inStock ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
               {product.inStock ? (product.isService ? "Available" : "In Stock") : "Out of Stock"}
             </span>

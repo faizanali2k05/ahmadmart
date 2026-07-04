@@ -13,6 +13,7 @@ export interface Product {
   images: string[];
   rating: number;
   reviews: number;
+  sold?: number; // total units sold across all confirmed orders — shown as "X sold"
   badge?: "new" | "sale" | "bestseller";
   featured?: boolean; // admin-curated — featured products are prioritised everywhere
   deliveryCharge?: number | null; // seller-set delivery charge (per product); null = use default

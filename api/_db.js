@@ -104,6 +104,7 @@ export function rowToProduct(r) {
     images: r.images || [],
     rating: r.rating ?? 0,
     reviews: r.reviews ?? 0,
+    sold: r.sold ?? 0,
     badge: r.badge ?? undefined,
     featured: r.featured ?? false,
     deliveryCharge: r.delivery_charge ?? null,

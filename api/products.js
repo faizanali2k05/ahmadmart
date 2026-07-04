@@ -15,7 +15,12 @@ export default async function handler(req, res) {
              u.city            as seller_city,
              u.jazzcash_number as seller_jazzcash_number,
              u.jazzcash_title  as seller_jazzcash_title,
-             u.account_type    as seller_account_type
+             u.account_type    as seller_account_type,
+             coalesce((
+               select sum((item->>'qty')::int) from orders o, jsonb_array_elements(o.items) as item
+               where (item->>'id')::int = p.id
+                 and o.status in ('Payment Received', 'Confirmed (COD)', 'Shipped', 'Delivered')
+             ), 0)::int as sold
       from products p
       left join users u on u.id = p.seller_id
       order by p.id`;
