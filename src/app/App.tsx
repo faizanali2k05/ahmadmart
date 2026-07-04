@@ -4046,11 +4046,13 @@ function SellerDeliveredOrders() {
   };
   const clearHistory = async () => {
     if (delivered.length === 0) return;
-    if (!window.confirm(`Download your ${delivered.length} delivered order${delivered.length === 1 ? "" : "s"} as a PDF and clear them from this list? The PDF is your permanent record.`)) return;
+    if (!window.confirm(
+      `Download ${delivered.length} delivered order${delivered.length === 1 ? "" : "s"} as a PDF (with full order and customer details)?\n\n` +
+      `Your all-time earnings and this order history will be permanently removed after downloading — the PDF becomes your only record. This cannot be undone.`
+    )) return;
     downloadOrderHistoryPdf(delivered, user?.storeName || "");
-    const resetEarnings = window.confirm("Also reset your total earnings back to zero and start fresh?\n\nPress Cancel to clear the list but keep your all-time earnings unchanged.");
     setClearBusy(true);
-    try { await sellerClearHistory(resetEarnings); load(); } catch { /* ignore */ }
+    try { await sellerClearHistory(); load(); } catch { /* ignore */ }
     setClearBusy(false);
   };
 
@@ -4076,6 +4078,13 @@ function SellerDeliveredOrders() {
           <Download size={15} /> {clearBusy ? "Working…" : "Download PDF & Clear"}
         </button>
       </div>
+
+      {delivered.length > 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 mb-5 text-xs text-amber-800">
+          <ShieldCheck size={15} className="flex-shrink-0 mt-0.5" />
+          <span>Downloading will permanently remove your all-time earnings and this order history — the PDF (with full order and customer details) becomes your only record. This cannot be undone.</span>
+        </div>
+      )}
 
       {delivered.length === 0 ? (
         <div className="bg-white rounded-2xl p-16 text-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>

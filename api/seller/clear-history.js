@@ -1,15 +1,13 @@
 // /api/seller/clear-history — a seller clears their Delivered-order history after
-// downloading it as a PDF (done client-side, before calling this).
-// POST { resetEarnings: boolean }:
-//   - Always archives every currently-visible Delivered order for this seller, so
-//     they drop out of the Past Orders list (the row itself is kept, never deleted)
-//     AND out of the "orders placed" count everywhere (seller's own dashboard,
-//     admin's seller list/detail) — cleared orders no longer count anywhere the
-//     seller can't see them, so the numbers always match what's actually visible.
-//   - If resetEarnings is true, also stamps the seller's earnings_reset_at to now,
-//     so every earnings figure (dashboard totals, admin's seller earnings) starts
-//     counting from zero going forward.
-import { getSql, getAuthUser, readJsonBody, ensureOrderHistoryColumns } from "../_db.js";
+// downloading it as a PDF (done client-side, before calling this). This is a
+// permanent reset: it archives every currently-visible Delivered order (drops
+// out of the Past Orders list and the "orders placed" count everywhere — the
+// row itself is kept, never deleted) AND resets earnings_reset_at to now, so
+// every earnings figure (dashboard totals, admin's seller earnings) starts
+// counting from zero going forward. The seller is warned of this before
+// downloading; there is no "keep earnings" option — the PDF is the permanent
+// record from that point on.
+import { getSql, getAuthUser, ensureOrderHistoryColumns } from "../_db.js";
 
 export default async function handler(req, res) {
   const auth = getAuthUser(req);
@@ -21,16 +19,12 @@ export default async function handler(req, res) {
   try {
     const sql = getSql();
     await ensureOrderHistoryColumns(sql);
-    const { resetEarnings } = await readJsonBody(req);
 
     const archived = await sql`
       update orders set archived = true, updated_at = now()
       where seller_id = ${auth.id} and status = 'Delivered' and archived = false
       returning id`;
-
-    if (resetEarnings) {
-      await sql`update users set earnings_reset_at = now(), updated_at = now() where id = ${auth.id}`;
-    }
+    await sql`update users set earnings_reset_at = now(), updated_at = now() where id = ${auth.id}`;
 
     res.status(200).json({ ok: true, archived: archived.length });
   } catch (e) {

@@ -1,6 +1,9 @@
-// Delivered-order history, rendered to a branded Ahmad Mart PDF (spreadsheet-style
-// table) so a seller has a complete permanent record before clearing their Past
-// Orders list. jsPDF is imported dynamically so it only loads when actually used.
+// Delivered-order history, rendered to a branded Ahmad Mart PDF so a seller has
+// a complete permanent record before their history and earnings are cleared.
+// Each order gets a compact, spreadsheet-style header row (ID, date, customer,
+// WhatsApp, total, payment, status) plus full detail lines (email, address,
+// products) underneath it, so nothing about the order or customer is lost.
+// jsPDF is imported dynamically so it only loads when actually used.
 import ahmadMartLogo from "@/imports/ahmad-logo.png";
 import type { Order } from "./orderStore";
 
@@ -23,16 +26,17 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
 }
 
 const COLS = [
-  { key: "id", label: "Order ID", w: 66 },
-  { key: "date", label: "Date", w: 62 },
-  { key: "name", label: "Customer", w: 100 },
-  { key: "phone", label: "WhatsApp", w: 78 },
-  { key: "products", label: "Products", w: 280 },
-  { key: "total", label: "Total (Rs.)", w: 68 },
-  { key: "payment", label: "Payment", w: 122 },
+  { key: "id", label: "Order ID", w: 68 },
+  { key: "date", label: "Date", w: 58 },
+  { key: "name", label: "Customer", w: 110 },
+  { key: "phone", label: "WhatsApp", w: 80 },
+  { key: "total", label: "Total (Rs.)", w: 70 },
+  { key: "payment", label: "Payment", w: 130 },
+  { key: "status", label: "Status", w: 90 },
 ] as const;
 
-/** Builds the branded, table-style PDF of a seller's delivered order history. */
+/** Builds the branded PDF of a seller's delivered order history, with full
+ *  order + customer detail for every order. */
 export async function buildOrderHistoryPdf(orders: Order[], storeName: string): Promise<Blob> {
   const { jsPDF } = await import("jspdf");
   const logo = await loadImage(ahmadMartLogo);
@@ -65,7 +69,7 @@ export async function buildOrderHistoryPdf(orders: Order[], storeName: string): 
     pdf.setDrawColor(229, 231, 235); pdf.setLineWidth(0.5);
     pdf.line(M, fy, PAGE_W - M, fy);
     pdf.setFont("helvetica", "normal"); pdf.setFontSize(7.5); pdf.setTextColor(...MUTED);
-    pdf.text("Ahmad Mart · Seller order history", M, fy + 12);
+    pdf.text("Ahmad Mart · Seller order history — this is the permanent record after history is cleared", M, fy + 12);
     pdf.text(`Page ${page}`, PAGE_W - M, fy + 12, { align: "right" });
   };
 
@@ -86,23 +90,45 @@ export async function buildOrderHistoryPdf(orders: Order[], storeName: string): 
   y = 90;
   tableHeader();
 
-  pdf.setFont("helvetica", "normal"); pdf.setFontSize(8);
   orders.forEach((o, i) => {
-    const productsText = o.items.map(it => `${it.name} ×${it.qty}`).join(", ");
-    const prodLines = pdf.splitTextToSize(productsText, COLS[4].w - 10) as string[];
-    const rowH = Math.max(18, prodLines.length * 9.5 + 8);
+    const productsText = `Products: ${o.items.map(it => `${it.name} ×${it.qty} = Rs. ${it.price * it.qty}`).join(", ")}`;
+    const addressText = `Address: ${o.address}`;
+    const emailText = o.email ? `Email: ${o.email}` : "";
+
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(7.5);
+    const detailWidth = CONTENT_W - 12;
+    const productLines = pdf.splitTextToSize(productsText, detailWidth) as string[];
+    const addressLines = pdf.splitTextToSize(addressText, detailWidth) as string[];
+    const emailLines = emailText ? (pdf.splitTextToSize(emailText, detailWidth) as string[]) : [];
+    const detailLineCount = productLines.length + addressLines.length + emailLines.length;
+
+    const headerRowH = 18;
+    const rowH = headerRowH + detailLineCount * 10 + 8;
     need(rowH);
 
     if (i % 2 === 1) { pdf.setFillColor(...STRIPE); pdf.rect(M, y, CONTENT_W, rowH, "F"); }
-    pdf.setTextColor(...GRAY);
+
+    // Main scannable row.
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.setTextColor(...GRAY);
     let x = M + 6;
-    pdf.text(o.id, x, y + 12); x += COLS[0].w;
-    pdf.text(new Date(o.createdAt).toLocaleDateString("en-GB"), x, y + 12); x += COLS[1].w;
-    pdf.text(o.name, x, y + 12, { maxWidth: COLS[2].w - 8 }); x += COLS[2].w;
-    pdf.text(o.phone, x, y + 12); x += COLS[3].w;
-    prodLines.forEach((line, li) => pdf.text(line, x, y + 12 + li * 9.5)); x += COLS[4].w;
-    pdf.setFont("helvetica", "bold"); pdf.text(`Rs. ${o.total}`, x, y + 12); pdf.setFont("helvetica", "normal"); x += COLS[5].w;
-    pdf.text(o.paymentMethod, x, y + 12, { maxWidth: COLS[6].w - 8 });
+    pdf.setFont("helvetica", "bold"); pdf.setTextColor(...BLUE);
+    pdf.text(o.id, x, y + 13); x += COLS[0].w;
+    pdf.setFont("helvetica", "normal"); pdf.setTextColor(...GRAY);
+    pdf.text(new Date(o.createdAt).toLocaleDateString("en-GB"), x, y + 13); x += COLS[1].w;
+    pdf.text(o.name, x, y + 13, { maxWidth: COLS[2].w - 8 }); x += COLS[2].w;
+    pdf.text(o.phone, x, y + 13); x += COLS[3].w;
+    pdf.setFont("helvetica", "bold");
+    pdf.text(`Rs. ${o.total}`, x, y + 13); x += COLS[4].w;
+    pdf.setFont("helvetica", "normal");
+    pdf.text(o.paymentMethod, x, y + 13, { maxWidth: COLS[5].w - 8 }); x += COLS[5].w;
+    pdf.text(o.status, x, y + 13, { maxWidth: COLS[6].w - 8 });
+
+    // Full detail lines underneath — nothing about the order or customer is left out.
+    let dy = y + headerRowH + 9;
+    pdf.setFontSize(7.5); pdf.setTextColor(...MUTED);
+    for (const line of emailLines) { pdf.text(line, M + 6, dy); dy += 10; }
+    for (const line of addressLines) { pdf.text(line, M + 6, dy); dy += 10; }
+    for (const line of productLines) { pdf.text(line, M + 6, dy); dy += 10; }
 
     y += rowH;
   });
