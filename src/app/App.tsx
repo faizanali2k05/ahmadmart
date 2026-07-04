@@ -1438,10 +1438,10 @@ function ShopPage() {
   }, [location.search]);
 
   // Categories include the built-in ones plus any new ones sellers introduce.
-  const cats = ["All", ...Array.from(new Set(["Mobile Accessories", "Home Decoration", "Digital Services", ...products.map(p => p.category)]))];
+  const cats = ["All", ...Array.from(new Set(["Mobile Accessories", "Home Decoration", "Digital Services", ...products.map(p => p.category)])).filter(Boolean)];
   // Derived purely from live products — a sub-category only shows once a product
   // actually exists in it, so unstocked placeholders never appear as filters.
-  const subs = ["All", ...Array.from(new Set(products.map(p => p.subcategory)))];
+  const subs = ["All", ...Array.from(new Set(products.map(p => p.subcategory))).filter(Boolean)];
 
   // Random by default — the same stable shuffle is filtered, so browsing the
   // shop shows every product in a random spread rather than a fixed order.
@@ -3247,6 +3247,7 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
     setUploadIdx(null);
   };
   const set = (k: string, v: string | boolean) => setF(prev => ({ ...prev, [k]: v }));
+  const [formErr, setFormErr] = useState("");
   const NEW_OPTION = "__new__";
   const onCategorySelect = (v: string) => {
     if (v === NEW_OPTION) {
@@ -3267,6 +3268,11 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
     set("subcategory", v);
   };
   const submit = () => {
+    if (!f.name.trim()) { setFormErr("Product name is required."); return; }
+    if (!f.category.trim()) { setFormErr("Category is required — pick one or add a new one."); return; }
+    if (!f.subcategory.trim()) { setFormErr("Sub-category is required — pick one or add a new one."); return; }
+    if (!(Number(f.price) > 0)) { setFormErr("Enter a price greater than 0."); return; }
+    setFormErr("");
     const images = imgs.map(s => s.trim()).filter(Boolean);
     const image = images[0] || "";
     // Keep every non-empty line. "Key: Value" becomes a labelled spec; a line
@@ -3391,6 +3397,7 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
         <label className="flex items-center gap-2 text-sm font-semibold text-[#374151]"><input type="checkbox" checked={f.inStock} onChange={e => set("inStock", e.target.checked)} /> In stock</label>
         <label className="flex items-center gap-2 text-sm font-semibold text-[#374151]"><input type="checkbox" checked={f.isService} onChange={e => set("isService", e.target.checked)} /> Digital service (WhatsApp contact)</label>
       </div>
+      {formErr && <p className="text-xs text-red-500 font-semibold mt-3">{formErr}</p>}
       <div className="flex gap-2 mt-4">
         <button onClick={submit} disabled={busy} className="px-5 py-2.5 rounded-xl bg-[#1E40AF] text-white font-bold text-sm disabled:opacity-60">{busy ? "Saving…" : "Save Product"}</button>
         <button onClick={onCancel} className="px-5 py-2.5 rounded-xl border border-gray-200 text-[#374151] font-bold text-sm">Cancel</button>
@@ -3415,7 +3422,7 @@ function AdminProducts({ dbMode }: { dbMode: boolean }) {
     if (editing !== null) requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [editing]);
 
-  const cats = ["All", ...Array.from(new Set(products.map(p => p.category)))];
+  const cats = ["All", ...Array.from(new Set(products.map(p => p.category))).filter(Boolean)];
   const q = search.trim().toLowerCase();
   const list = products.filter(p =>
     (filter === "All" || p.category === filter) &&
@@ -3845,7 +3852,7 @@ function SellerPage() {
 
   const [analytics, setAnalytics] = useState<SalesAnalytics | null>(null);
   const isSeller = !!user && (user.role === "seller" || user.role === "admin");
-  const load = () => { sellerGetProducts().then(setProducts).catch(e => setErr(e instanceof Error ? e.message : "Failed to load products")); };
+  const load = () => sellerGetProducts().then(setProducts).catch(e => setErr(e instanceof Error ? e.message : "Failed to load products"));
   useEffect(() => { if (isSeller) { load(); sellerGetAnalytics().then(setAnalytics).catch(() => {}); loadOrders(); } }, [isSeller]);
   const [resetBusy, setResetBusy] = useState(false);
   // Independent of the Delivered Orders page's clear flow — a seller can zero out
@@ -3885,7 +3892,8 @@ function SellerPage() {
     setBusy(true); setErr(""); setMsg("");
     try {
       if (p.id) await sellerUpdateProduct(p); else await sellerCreateProduct(p);
-      load(); refreshProducts(); setEditing(null); setMsg("Saved.");
+      await Promise.all([load(), refreshProducts()]);
+      setEditing(null); setMsg("Saved.");
     } catch (e) { setErr(e instanceof Error ? e.message : "Save failed"); }
     setBusy(false);
   };

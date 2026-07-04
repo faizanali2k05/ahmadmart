@@ -6,6 +6,18 @@
 // earnings per seller via the "sellers" resource below.
 import { getSql, requireAdmin, rowToProduct, readJsonBody, sellerAnalytics, deleteSellerCascade, ensureOrderHistoryColumns, ensureAccountTypeColumn } from "../_db.js";
 
+// See the identical check in api/seller/products.js — a product with no
+// name/category/subcategory or a non-positive price would otherwise save
+// without a DB error, then be hard to find on the storefront (blank filter
+// labels) or effectively free.
+function validateProduct(p) {
+  if (!p.name || !String(p.name).trim()) return "Name is required.";
+  if (!(Number(p.price) > 0)) return "Price must be greater than 0.";
+  if (!p.category || !String(p.category).trim()) return "Category is required.";
+  if (!p.subcategory || !String(p.subcategory).trim()) return "Sub-category is required.";
+  return null;
+}
+
 export default async function handler(req, res) {
   if (!requireAdmin(req, res)) return;
   const resource = req.query.resource;
@@ -25,7 +37,8 @@ async function products(req, res) {
   if (req.method !== "GET") await sql`alter table products add column if not exists delivery_charge integer`;
   if (req.method === "POST") {
     const p = await readJsonBody(req);
-    if (!p.name || p.price == null) { res.status(400).json({ error: "Name and price are required." }); return; }
+    const err = validateProduct(p);
+    if (err) { res.status(400).json({ error: err }); return; }
     const rows = await sql`
       insert into products
         (name, price, original_price, price_note, category, subcategory, image, images,
@@ -43,6 +56,8 @@ async function products(req, res) {
   if (req.method === "PUT") {
     const p = await readJsonBody(req);
     if (!p.id) { res.status(400).json({ error: "Missing product id." }); return; }
+    const perr = validateProduct(p);
+    if (perr) { res.status(400).json({ error: perr }); return; }
     const rows = await sql`
       update products set
         name=${p.name}, price=${p.price}, original_price=${p.originalPrice ?? null},

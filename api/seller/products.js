@@ -3,6 +3,19 @@
 // Requires a Bearer token with role "seller" (admins may also use it).
 import { getSql, getAuthUser, rowToProduct, readJsonBody } from "../_db.js";
 
+// A product with no name/category/subcategory or a non-positive price saves
+// without a DB error (those columns are `not null`, not "non-empty") but is
+// then hard to find on the storefront (blank filter labels) or effectively
+// free — reject it here even though the form already validates this, so a
+// stray API call can't create one either.
+function validateProduct(p) {
+  if (!p.name || !String(p.name).trim()) return "Name is required.";
+  if (!(Number(p.price) > 0)) return "Price must be greater than 0.";
+  if (!p.category || !String(p.category).trim()) return "Category is required.";
+  if (!p.subcategory || !String(p.subcategory).trim()) return "Sub-category is required.";
+  return null;
+}
+
 export default async function handler(req, res) {
   const auth = getAuthUser(req);
   if (!auth || (auth.role !== "seller" && auth.role !== "admin")) {
@@ -30,7 +43,8 @@ export default async function handler(req, res) {
 
     if (req.method === "POST") {
       const p = await readJsonBody(req);
-      if (!p.name || p.price == null) { res.status(400).json({ error: "Name and price are required." }); return; }
+      const err = validateProduct(p);
+      if (err) { res.status(400).json({ error: err }); return; }
       // Sellers cannot set a badge — only the admin curates badges. Always null on create.
       const rows = await sql`
         insert into products
@@ -62,6 +76,8 @@ export default async function handler(req, res) {
         return;
       }
       const p = body;
+      const perr = validateProduct(p);
+      if (perr) { res.status(400).json({ error: perr }); return; }
       // Note: badge is intentionally NOT updated here — only the admin controls badges,
       // so a seller's edit preserves whatever badge the admin set.
       const rows = await sql`

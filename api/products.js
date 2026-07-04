@@ -8,6 +8,10 @@ export default async function handler(req, res) {
   }
   try {
     const sql = getSql();
+    // "sold" is computed once across all orders (not per-product — a correlated
+    // subquery here would re-scan and re-unnest every order for every single
+    // product row) then joined in, so this stays a single cheap pass regardless
+    // of how many products exist.
     const query = () => sql`
       select p.*,
              u.store_name      as seller_store,
@@ -16,13 +20,15 @@ export default async function handler(req, res) {
              u.jazzcash_number as seller_jazzcash_number,
              u.jazzcash_title  as seller_jazzcash_title,
              u.account_type    as seller_account_type,
-             coalesce((
-               select sum((item->>'qty')::int) from orders o, jsonb_array_elements(o.items) as item
-               where (item->>'id')::int = p.id
-                 and o.status in ('Payment Received', 'Confirmed (COD)', 'Shipped', 'Delivered')
-             ), 0)::int as sold
+             coalesce(sold.qty, 0)::int as sold
       from products p
       left join users u on u.id = p.seller_id
+      left join (
+        select (item->>'id')::int as product_id, sum((item->>'qty')::int) as qty
+        from orders o, jsonb_array_elements(o.items) as item
+        where o.status in ('Payment Received', 'Confirmed (COD)', 'Shipped', 'Delivered')
+        group by 1
+      ) sold on sold.product_id = p.id
       order by p.id`;
     let rows;
     try {
