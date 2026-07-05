@@ -1763,6 +1763,7 @@ function ProductDetailPage() {
   const [activeImg, setActiveImg] = useState(0);
   const [tab, setTab] = useState<"desc" | "specs" | "reviews">("desc");
   const [added, setAdded] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const navigate = useNavigate();
 
   const product = products.find(p => p.id === Number(id));
@@ -1813,18 +1814,29 @@ function ProductDetailPage() {
       <div className="grid lg:grid-cols-2 gap-8 mb-12">
         {/* Gallery */}
         <div>
-          <div className="bg-white rounded-2xl overflow-hidden mb-3 relative group"
+          <div className="bg-white rounded-2xl overflow-hidden mb-3 relative group cursor-zoom-in"
+            onClick={() => setZoomOpen(true)}
             style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.1)", aspectRatio: "1/1" }}>
             <ProductImage src={product.images[activeImg]} alt={product.name}
               className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" />
             {product.badge && (
               <div className="absolute top-4 left-4"><Badge type={product.badge} /></div>
             )}
-            <div className="absolute bottom-4 right-4 w-9 h-9 rounded-full bg-white/80 flex items-center justify-center cursor-zoom-in"
+            <div className="absolute bottom-4 right-4 w-9 h-9 rounded-full bg-white/80 flex items-center justify-center"
               style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
               <ZoomIn size={16} className="text-[#1E40AF]" />
             </div>
           </div>
+          {zoomOpen && (
+            <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomOpen(false)}>
+              <button onClick={() => setZoomOpen(false)}
+                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors">
+                <X size={20} />
+              </button>
+              <ProductImage src={product.images[activeImg]} alt={product.name}
+                className="max-w-full max-h-full object-contain" />
+            </div>
+          )}
           <div className="flex gap-2">
             {product.images.map((img, i) => (
               <button key={i} onClick={() => setActiveImg(i)}
