@@ -612,7 +612,7 @@ function ProductCardBase({ product }: { product: Product }) {
       className="reveal group bg-white rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1"
       style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08), 0 1px 4px rgba(0,0,0,0.06)" }}
     >
-      <div className="relative overflow-hidden bg-gray-50" style={{ aspectRatio: "1/1" }}>
+      <div className="relative overflow-hidden bg-gray-50" style={{ aspectRatio: "4/5" }}>
         <ProductImage
           src={product.image}
           alt={product.name}
@@ -1816,7 +1816,7 @@ function ProductDetailPage() {
         <div>
           <div className="bg-white rounded-2xl overflow-hidden mb-3 relative group cursor-zoom-in"
             onClick={() => setZoomOpen(true)}
-            style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.1)", aspectRatio: "1/1" }}>
+            style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.1)", aspectRatio: "4/5" }}>
             <ProductImage src={product.images[activeImg]} alt={product.name}
               className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" />
             {product.badge && (
