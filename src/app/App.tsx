@@ -3230,7 +3230,10 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
     subcategory: initial?.subcategory ?? "",
     badge: initial?.badge ?? "",
     inStock: initial?.inStock ?? true,
-    isService: initial?.isService ?? false,
+    // Ticked by default for NEW products (per store owner's preference — orders
+    // are handled over WhatsApp); editing an existing product keeps its own value
+    // (which the API stores as undefined when false — hence !! rather than ??).
+    isService: initial ? !!initial.isService : true,
     description: initial?.description ?? "",
     specs: Object.entries(initial?.specs ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n"),
   }));
