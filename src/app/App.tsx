@@ -956,9 +956,11 @@ function Navbar() {
           )}
         </div>
 
-        {/* Mobile menu */}
+        {/* Mobile menu — scrolls within itself (the nav is fixed, so without this
+            a long category list would extend past the bottom of the screen with
+            no way to reach the items below). */}
         {menuOpen && (
-          <div className="xl:hidden border-t border-gray-100 bg-white">
+          <div className="xl:hidden border-t border-gray-100 bg-white mobile-menu-scroll">
             <div className="px-4 py-3 flex flex-col gap-1">
               <Link to="/" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">Home</Link>
               <Link to="/shop" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">Shop</Link>

@@ -20,6 +20,18 @@
   box-shadow: 0 4px 16px rgba(30, 64, 175, 0.05);
 }
 
+/* The hamburger menu lives inside the fixed nav, so it must scroll within
+   itself — capped at the viewport minus the promo bar + header (~110px), using
+   dvh where supported so mobile browsers' collapsing URL bar is accounted for.
+   overscroll-behavior stops the page behind from scrolling once the menu's own
+   scroll hits its end. */
+.mobile-menu-scroll {
+  max-height: calc(100vh - 110px);
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* Stop iOS Safari from auto-zooming when a form field is focused. The zoom only
    happens when an input's font-size is under 16px, and after a search the page
    would stay stuck zoomed-in. Forcing 16px on touch devices prevents the zoom
