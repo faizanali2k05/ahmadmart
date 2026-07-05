@@ -4,7 +4,10 @@
     <head>
       
       <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <!-- maximum-scale=1/user-scalable=no stop accidental pinch-zoom from leaving
+           the page mid-zoomed (looks like broken/shifted layout) — product photos
+           have their own dedicated tap-to-zoom instead. -->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       <!-- Do not send a Referer header. Lets us embed product images hosted on
            stores that use referer-based hotlink protection (e.g. trader.com.pk). -->
       <meta name="referrer" content="no-referrer" />
@@ -66,8 +69,8 @@
         })();
       </script>
 
-      <script type="module" crossorigin src="/assets/index-DWtnTP-S.js"></script>
-      <link rel="stylesheet" crossorigin href="/assets/index-DBJSjaVV.css">
+      <script type="module" crossorigin src="/assets/index-B_FbDKid.js"></script>
+      <link rel="stylesheet" crossorigin href="/assets/index-B_bsBVB6.css">
     </head>
 
     <body>
