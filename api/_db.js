@@ -122,6 +122,8 @@ export function rowToProduct(r) {
     isService: r.is_service || undefined,
     description: r.description || "",
     specs: r.specs || {},
+    sizes: r.sizes || [],
+    colors: r.colors || [],
     sellerId: r.seller_id ?? undefined,
     sellerStore: r.seller_store ?? undefined,
     sellerCity: r.seller_city ?? undefined,

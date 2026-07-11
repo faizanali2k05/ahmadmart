@@ -50,7 +50,13 @@ import {
 } from "./messagesApi";
 import { POLICY_LINKS, openPolicyPdf } from "./policyDocs";
 
-interface CartItem extends Product { qty: number; }
+interface CartItem extends Product {
+  qty: number;
+  // The size/colour the buyer picked (products with variants) — part of the cart
+  // line's identity, so e.g. the same shirt in M and in L are separate lines.
+  chosenSize?: string;
+  chosenColor?: string;
+}
 interface WishlistItem extends Product {}
 
 interface StoreCtx {
@@ -59,10 +65,10 @@ interface StoreCtx {
   refreshProducts: (fresh?: boolean) => Promise<void>;
   cart: CartItem[];
   wishlist: WishlistItem[];
-  addToCart: (p: Product, qty?: number) => void;
-  removeFromCart: (id: number) => void;
+  addToCart: (p: Product, qty?: number, variant?: { size?: string; color?: string }) => void;
+  removeFromCart: (id: number, size?: string, color?: string) => void;
   clearCart: () => void;
-  updateQty: (id: number, qty: number) => void;
+  updateQty: (id: number, qty: number, size?: string, color?: string) => void;
   toggleWishlist: (p: Product) => void;
   inWishlist: (id: number) => boolean;
   cartCount: number;
@@ -419,18 +425,21 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
   useEffect(() => { refreshProducts(); }, [refreshProducts]);
 
-  const addToCart = useCallback((p: Product, qty = 1) => {
+  const addToCart = useCallback((p: Product, qty = 1, variant?: { size?: string; color?: string }) => {
+    const size = variant?.size;
+    const color = variant?.color;
     setCart(prev => {
-      const ex = prev.find(i => i.id === p.id);
-      if (ex) return prev.map(i => i.id === p.id ? { ...i, qty: i.qty + qty } : i);
-      return [...prev, { ...p, qty }];
+      const ex = prev.find(i => i.id === p.id && i.chosenSize === size && i.chosenColor === color);
+      if (ex) return prev.map(i => (i === ex ? { ...i, qty: i.qty + qty } : i));
+      return [...prev, { ...p, qty, chosenSize: size, chosenColor: color }];
     });
   }, []);
-  const removeFromCart = useCallback((id: number) => setCart(prev => prev.filter(i => i.id !== id)), []);
+  const removeFromCart = useCallback((id: number, size?: string, color?: string) =>
+    setCart(prev => prev.filter(i => !(i.id === id && i.chosenSize === size && i.chosenColor === color))), []);
   const clearCart = useCallback(() => setCart([]), []);
-  const updateQty = useCallback((id: number, qty: number) => {
-    if (qty < 1) return removeFromCart(id);
-    setCart(prev => prev.map(i => i.id === id ? { ...i, qty } : i));
+  const updateQty = useCallback((id: number, qty: number, size?: string, color?: string) => {
+    if (qty < 1) return removeFromCart(id, size, color);
+    setCart(prev => prev.map(i => (i.id === id && i.chosenSize === size && i.chosenColor === color) ? { ...i, qty } : i));
   }, [removeFromCart]);
   const toggleWishlist = useCallback((p: Product) => {
     setWishlist(prev => prev.find(i => i.id === p.id) ? prev.filter(i => i.id !== p.id) : [...prev, p]);
@@ -604,6 +613,9 @@ function ProductCardBase({ product }: { product: Product }) {
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Products with size/colour variants need the buyer to pick one first — send
+    // them to the product page instead of quick-adding an ambiguous line.
+    if (product.sizes?.length || product.colors?.length) { navigate(`/product/${product.id}`); return; }
     setAdding(true);
     addToCart(product);
     setTimeout(() => setAdding(false), 700);
@@ -1784,6 +1796,10 @@ function ProductDetailPage() {
   const [tab, setTab] = useState<"desc" | "specs" | "reviews">("desc");
   const [added, setAdded] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  // Buyer's variant picks for products that have sizes/colours.
+  const [selSize, setSelSize] = useState<string | null>(null);
+  const [selColor, setSelColor] = useState<string | null>(null);
+  const [variantErr, setVariantErr] = useState("");
   const navigate = useNavigate();
 
   const product = products.find(p => p.id === Number(id));
@@ -1794,6 +1810,9 @@ function ProductDetailPage() {
       setActiveImg(0);
       setQty(1);
       setTab("desc");
+      setSelSize(null);
+      setSelColor(null);
+      setVariantErr("");
     }
   }, [id]);
 
@@ -1812,8 +1831,20 @@ function ProductDetailPage() {
 
   const related = products.filter(p => p.subcategory === product.subcategory && p.id !== product.id).slice(0, 4);
 
+  // Products with variants require a pick before the cart accepts them.
+  const needsSize = (product.sizes?.length ?? 0) > 0;
+  const needsColor = (product.colors?.length ?? 0) > 0;
+  const variantOk = () => {
+    if (needsSize && !selSize) { setVariantErr("Please select a size first."); return false; }
+    if (needsColor && !selColor) { setVariantErr("Please select a colour first."); return false; }
+    setVariantErr("");
+    return true;
+  };
+  const variant = { size: selSize ?? undefined, color: selColor ?? undefined };
+
   const handleAddToCart = () => {
-    addToCart(product, qty);
+    if (!variantOk()) return;
+    addToCart(product, qty, variant);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
   };
@@ -1908,6 +1939,35 @@ function ProductDetailPage() {
 
           <p className="text-[#374151] text-sm leading-relaxed mb-6">{product.description}</p>
 
+          {/* Variant pickers — shown only when the seller provided them */}
+          {needsSize && (
+            <div className="mb-4">
+              <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-2">Size {selSize && <span className="text-[#1E40AF] normal-case">— {selSize}</span>}</p>
+              <div className="flex flex-wrap gap-2">
+                {product.sizes!.map(s => (
+                  <button key={s} onClick={() => { setSelSize(s); setVariantErr(""); }}
+                    className={`min-w-[44px] px-3 py-2 rounded-xl border-2 text-sm font-bold transition-all active:scale-95 ${selSize === s ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-gray-200 text-[#374151] hover:border-[#1E40AF] hover:text-[#1E40AF]"}`}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {needsColor && (
+            <div className="mb-4">
+              <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-2">Colour {selColor && <span className="text-[#1E40AF] normal-case">— {selColor}</span>}</p>
+              <div className="flex flex-wrap gap-2">
+                {product.colors!.map(c => (
+                  <button key={c} onClick={() => { setSelColor(c); setVariantErr(""); }}
+                    className={`px-3 py-2 rounded-xl border-2 text-sm font-bold transition-all active:scale-95 ${selColor === c ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-gray-200 text-[#374151] hover:border-[#1E40AF] hover:text-[#1E40AF]"}`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {variantErr && <p className="text-xs text-red-500 font-semibold mb-4">{variantErr}</p>}
+
           {/* Qty + Actions / Service contact */}
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <div className="flex items-center rounded-xl overflow-hidden border border-gray-200"
@@ -1928,7 +1988,7 @@ function ProductDetailPage() {
               {added ? <CheckCircle size={16} /> : <ShoppingCart size={16} />}
               {added ? "Added to Cart!" : "Add to Cart"}
             </button>
-            <button onClick={() => { addToCart(product, qty); navigate("/checkout"); }}
+            <button onClick={() => { if (!variantOk()) return; addToCart(product, qty, variant); navigate("/checkout"); }}
               className="flex-1 min-w-[120px] py-3 rounded-xl bg-[#F97316] text-white font-bold text-sm hover:bg-orange-500 transition-all active:scale-95"
               style={{ boxShadow: "0 4px 16px rgba(249,115,22,0.35)" }}>
               Buy Now
@@ -2058,27 +2118,32 @@ function CartPage() {
         {/* Items */}
         <div className="lg:col-span-2 space-y-4">
           {cart.map(item => (
-            <div key={item.id} className="bg-white rounded-2xl p-4 flex gap-4"
+            <div key={`${item.id}|${item.chosenSize ?? ""}|${item.chosenColor ?? ""}`} className="bg-white rounded-2xl p-4 flex gap-4"
               style={{ boxShadow: "0 4px 14px rgba(30,64,175,0.07)" }}>
               <ProductImage src={item.image} alt={item.name}
                 className="w-24 h-24 object-cover rounded-xl flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <Link to={`/product/${item.id}`} className="font-bold text-[#111827] text-sm hover:text-[#1E40AF] line-clamp-2">{item.name}</Link>
                 <p className="text-xs text-[#6b7280] mt-0.5">{item.subcategory}</p>
+                {(item.chosenSize || item.chosenColor) && (
+                  <p className="text-xs font-semibold text-[#1E40AF] mt-0.5">
+                    {[item.chosenSize && `Size: ${item.chosenSize}`, item.chosenColor && `Colour: ${item.chosenColor}`].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
                   <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
-                    <button onClick={() => updateQty(item.id, item.qty - 1)}
+                    <button onClick={() => updateQty(item.id, item.qty - 1, item.chosenSize, item.chosenColor)}
                       className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 transition-colors">
                       <Minus size={13} />
                     </button>
                     <span className="w-8 text-center text-sm font-bold">{item.qty}</span>
-                    <button onClick={() => updateQty(item.id, item.qty + 1)}
+                    <button onClick={() => updateQty(item.id, item.qty + 1, item.chosenSize, item.chosenColor)}
                       className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 transition-colors">
                       <Plus size={13} />
                     </button>
                   </div>
                   <span className="font-black text-[#1E40AF]">{fmt(item.price * item.qty)}</span>
-                  <button onClick={() => removeFromCart(item.id)} className="text-red-400 hover:text-red-600 transition-colors p-1">
+                  <button onClick={() => removeFromCart(item.id, item.chosenSize, item.chosenColor)} className="text-red-400 hover:text-red-600 transition-colors p-1">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -2210,7 +2275,17 @@ function CheckoutPage() {
           email: form.email.trim(),
           address: form.address.trim(),
           notes: form.notes.trim() || undefined,
-          items: g.items.map(it => ({ id: it.id, name: it.name, qty: it.qty, price: it.price })),
+          // The chosen size/colour rides inside the item name, so it shows up
+          // everywhere an order is displayed (WhatsApp message, order cards,
+          // history PDFs) with no schema changes.
+          items: g.items.map(it => ({
+            id: it.id,
+            name: it.name + (it.chosenSize || it.chosenColor
+              ? ` (${[it.chosenSize && `Size: ${it.chosenSize}`, it.chosenColor && `Colour: ${it.chosenColor}`].filter(Boolean).join(", ")})`
+              : ""),
+            qty: it.qty,
+            price: it.price,
+          })),
           subtotal,
           shipping: groupShipping,
           total: groupTotal,
@@ -2431,11 +2506,11 @@ function CheckoutPage() {
                     <p className="text-xs font-bold text-[#111827] mb-2 flex items-center gap-1.5"><User size={12} className="text-[#1E40AF]" /> {g.sellerStore || "Ahmad Mart"}</p>
                     <div className="space-y-2">
                       {g.items.map(item => (
-                        <div key={item.id} className="flex gap-2 items-center">
+                        <div key={`${item.id}|${item.chosenSize ?? ""}|${item.chosenColor ?? ""}`} className="flex gap-2 items-center">
                           <ProductImage src={item.image} alt={item.name} className="w-9 h-9 object-cover rounded-lg flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold text-[#111827] line-clamp-1">{item.name}</p>
-                            <p className="text-[11px] text-[#6b7280]">Qty: {item.qty}</p>
+                            <p className="text-[11px] text-[#6b7280]">Qty: {item.qty}{item.chosenSize ? ` · Size: ${item.chosenSize}` : ""}{item.chosenColor ? ` · ${item.chosenColor}` : ""}</p>
                           </div>
                           <span className="text-xs font-bold text-[#1E40AF] flex-shrink-0">{fmt(item.price * item.qty)}</span>
                         </div>
@@ -3283,6 +3358,9 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
     isService: initial ? !!initial.isService : true,
     description: initial?.description ?? "",
     specs: Object.entries(initial?.specs ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n"),
+    // Optional variants (clothing, shoes, etc.), edited as comma-separated text.
+    sizes: (initial?.sizes ?? []).join(", "),
+    colors: (initial?.colors ?? []).join(", "),
   }));
   // Product images managed as a list: the first item is the main image, the rest
   // are gallery images. Each is added/edited by URL with a live preview.
@@ -3365,6 +3443,8 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
       isService: f.isService || undefined,
       description: f.description.trim(),
       specs,
+      sizes: f.sizes.split(",").map(s => s.trim()).filter(Boolean),
+      colors: f.colors.split(",").map(s => s.trim()).filter(Boolean),
       rating: initial?.rating ?? 0,
       reviews: initial?.reviews ?? 0,
     });
@@ -3422,6 +3502,8 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
         <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Original Price (optional)</span><input className={inp} type="number" value={f.originalPrice} onChange={e => set("originalPrice", e.target.value)} /></label>
         <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Price Note (e.g. per month)</span><input className={inp} value={f.priceNote} onChange={e => set("priceNote", e.target.value)} /></label>
         <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Delivery Charge (Rs.)</span><input className={inp} type="number" value={f.deliveryCharge} onChange={e => set("deliveryCharge", e.target.value)} placeholder={`Default ${DELIVERY_FEE}`} /></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Available Sizes <span className="font-normal text-[#6b7280]">(optional — clothing, shoes, etc.)</span></span><input className={inp} value={f.sizes} onChange={e => set("sizes", e.target.value)} placeholder="e.g. S, M, L, XL  or  39, 40, 41, 42" /></label>
+        <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Available Colours <span className="font-normal text-[#6b7280]">(optional)</span></span><input className={inp} value={f.colors} onChange={e => set("colors", e.target.value)} placeholder="e.g. Black, White, Navy Blue" /></label>
         {allowBadge && <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Badge</span><select className={inp} value={f.badge} onChange={e => set("badge", e.target.value)}><option value="">None</option><option value="new">new</option><option value="sale">sale</option><option value="bestseller">bestseller</option></select></label>}
         <div className="text-sm sm:col-span-2">
           <span className="font-semibold text-[#374151] block mb-1">Product Images</span>

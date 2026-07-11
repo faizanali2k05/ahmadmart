@@ -86,6 +86,11 @@ alter table users add column if not exists payment_methods text not null default
 -- Per-product delivery charge set by the seller (NULL = use the platform default).
 alter table products add column if not exists delivery_charge integer;
 
+-- Optional variants (clothing, shoes, etc.) — arrays of strings the buyer picks
+-- from at checkout, e.g. ["S","M","L"] / ["Black","White"]. Empty = no variants.
+alter table products add column if not exists sizes  jsonb not null default '[]'::jsonb;
+alter table products add column if not exists colors jsonb not null default '[]'::jsonb;
+
 -- Which seller owns a product. NULL = official Ahmad Mart (admin) product.
 alter table products add column if not exists seller_id integer references users(id) on delete set null;
 create index if not exists products_seller_idx on products (seller_id);
