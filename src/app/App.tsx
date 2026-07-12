@@ -33,6 +33,8 @@ import {
   updateProduct as apiUpdateProduct, deleteProduct as apiDeleteProduct,
   setProductFeatured as apiSetProductFeatured, renameCategory as apiRenameCategory,
   deleteCategory as apiDeleteCategory,
+  fetchCategoryImages as apiFetchCategoryImages, setCategoryImage as apiSetCategoryImage,
+  deleteCategoryImage as apiDeleteCategoryImage,
   fetchAnalytics, seedProducts, type Analytics,
 } from "./adminApi";
 import {
@@ -63,6 +65,10 @@ interface StoreCtx {
   products: Product[];
   productsLoading: boolean;
   refreshProducts: (fresh?: boolean) => Promise<void>;
+  // Admin-uploaded photo per category, for the homepage's "Shop by Category"
+  // strip. Categories not in this map fall back to a product photo instead.
+  categoryImages: Record<string, string>;
+  refreshCategoryImages: () => Promise<void>;
   cart: CartItem[];
   wishlist: WishlistItem[];
   addToCart: (p: Product, qty?: number, variant?: { size?: string; color?: string }) => void;
@@ -425,6 +431,12 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
   useEffect(() => { refreshProducts(); }, [refreshProducts]);
 
+  const [categoryImages, setCategoryImages] = useState<Record<string, string>>({});
+  const refreshCategoryImages = useCallback(async () => {
+    try { setCategoryImages(await apiFetchCategoryImages()); } catch { /* falls back to product photos */ }
+  }, []);
+  useEffect(() => { refreshCategoryImages(); }, [refreshCategoryImages]);
+
   const addToCart = useCallback((p: Product, qty = 1, variant?: { size?: string; color?: string }) => {
     const size = variant?.size;
     const color = variant?.color;
@@ -469,10 +481,10 @@ function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(() => ({
-    products, productsLoading, refreshProducts,
+    products, productsLoading, refreshProducts, categoryImages, refreshCategoryImages,
     cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
     cartCount, cartTotal, user, authReady, login, signup, changeRole, updateStore, logout, recentlyViewed, addRecentlyViewed,
-  }), [products, productsLoading, refreshProducts, cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
+  }), [products, productsLoading, refreshProducts, categoryImages, refreshCategoryImages, cart, wishlist, addToCart, removeFromCart, clearCart, updateQty, toggleWishlist, inWishlist,
     cartCount, cartTotal, user, authReady, login, signup, changeRole, updateStore, logout, recentlyViewed, addRecentlyViewed]);
 
   return <Store.Provider value={value}>{children}</Store.Provider>;
@@ -519,7 +531,7 @@ function PakistanClock() {
     hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true,
   });
   return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#EFF6FF] text-[#1E40AF] text-xs font-bold">
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-sm bg-[#EFF6FF] text-[#1E40AF] text-xs font-bold">
       <Clock size={14} /> Pakistan time: <span className="font-mono">{text}</span>
     </div>
   );
@@ -568,7 +580,7 @@ function Badge({ type }: { type: "new" | "sale" | "bestseller" }) {
     bestseller: "bg-amber-500 text-white",
   };
   const labels = { new: "New", sale: "Sale", bestseller: "Best Seller" };
-  return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${map[type]}`}>{labels[type]}</span>;
+  return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide ${map[type]}`}>{labels[type]}</span>;
 }
 
 // A single shared IntersectionObserver reveals every element registered with it,
@@ -625,8 +637,7 @@ function ProductCardBase({ product }: { product: Product }) {
     <div
       ref={cardRef}
       onClick={() => navigate(`/product/${product.id}`)}
-      className="reveal group bg-white rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1"
-      style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08), 0 1px 4px rgba(0,0,0,0.06)" }}
+      className="reveal group bg-white rounded-sm overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-[#1E40AF]"
     >
       <div className="relative overflow-hidden bg-gray-50" style={{ aspectRatio: "4/5" }}>
         <ProductImage
@@ -636,27 +647,26 @@ function ProductCardBase({ product }: { product: Product }) {
         />
         <div className="absolute top-3 left-3 flex flex-col gap-1">
           {product.featured && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-black text-white px-2 py-0.5 rounded-full" style={{ background: "linear-gradient(135deg, #F97316, #ea580c)", boxShadow: "0 2px 8px rgba(249,115,22,0.4)" }}>
+            <span className="inline-flex items-center gap-1 text-[10px] font-black text-white px-2 py-0.5 rounded-sm bg-[#F97316]">
               <Star size={9} className="fill-white" /> Featured
             </span>
           )}
           {product.badge && <Badge type={product.badge} />}
           {product.originalPrice && (
-            <span className="text-[10px] font-bold bg-red-500 text-white px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold bg-red-500 text-white px-2 py-0.5 rounded-sm">
               -{discount(product.originalPrice, product.price)}%
             </span>
           )}
         </div>
         <button
           onClick={e => { e.stopPropagation(); toggleWishlist(product); }}
-          className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 active:scale-90"
-          style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}
+          className="absolute top-3 right-3 w-8 h-8 rounded-sm bg-white/90 border border-gray-200 flex items-center justify-center transition-all duration-200 active:scale-90"
         >
           <Heart size={15} className={inWishlist(product.id) ? "fill-red-500 text-red-500" : "text-gray-400"} />
         </button>
       </div>
       <div className="p-4">
-        <p className="text-xs text-[#F97316] font-semibold mb-1">{product.subcategory}</p>
+        <p className="text-[11px] text-[#F97316] font-bold uppercase tracking-wide mb-1">{product.subcategory}</p>
         {product.sellerStore && <p className="text-[11px] text-[#6b7280] mb-1 truncate">Sold by <span className="font-semibold text-[#374151]">{product.sellerStore}</span>{product.sellerCity ? ` · ${product.sellerCity}` : ""}</p>}
         <h3 className="font-semibold text-[#111827] text-sm leading-snug mb-2 line-clamp-2 group-hover:text-[#1E40AF] transition-colors">{product.name}</h3>
         {!product.isService && (product.reviews > 0 || !!product.sold) && (
@@ -672,23 +682,21 @@ function ProductCardBase({ product }: { product: Product }) {
         )}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-base font-bold text-[#1E40AF]">{fmt(product.price)}</p>
+            <p className="text-lg font-extrabold text-[#1E40AF] tracking-tight">{fmt(product.price)}</p>
             {product.originalPrice && <p className="text-xs text-gray-400 line-through">{fmt(product.originalPrice)}</p>}
             {product.priceNote && <p className="text-[11px] text-[#6b7280] font-medium">{product.priceNote}</p>}
           </div>
           {product.isService ? (
             <button
               onClick={e => { e.stopPropagation(); navigate(`/product/${product.id}`); }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all duration-200 active:scale-95 bg-[#1E40AF] hover:bg-[#1e3a8a]"
-              style={{ boxShadow: "0 4px 12px rgba(30,64,175,0.3)" }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-sm text-xs font-semibold text-white transition-colors duration-200 active:scale-95 bg-[#1E40AF] hover:bg-[#1e3a8a]"
             >
               <ShoppingCart size={13} /> Buy
             </button>
           ) : (
             <button
               onClick={handleAdd}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-95 ${adding ? "bg-emerald-500 text-white" : "bg-[#1E40AF] text-white hover:bg-[#1e3a8a]"}`}
-              style={{ boxShadow: adding ? "0 4px 12px rgba(16,185,129,0.4)" : "0 4px 12px rgba(30,64,175,0.3)" }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-sm text-xs font-semibold transition-colors duration-200 active:scale-95 ${adding ? "bg-emerald-500 text-white" : "bg-[#1E40AF] text-white hover:bg-[#1e3a8a]"}`}
             >
               {adding ? <CheckCircle size={13} /> : <ShoppingCart size={13} />}
               {adding ? "Added!" : "Add"}
@@ -706,7 +714,7 @@ const ProductCard = memo(ProductCardBase);
 // cache) so the grid never flashes empty or shows stale dummy products.
 function SkeletonCard() {
   return (
-    <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+    <div className="bg-white rounded-sm overflow-hidden border border-gray-200">
       <div className="bg-gray-100 animate-pulse" style={{ aspectRatio: "1/1" }} />
       <div className="p-3 sm:p-4 space-y-2">
         <div className="h-3 rounded bg-gray-100 animate-pulse w-3/4" />
@@ -739,7 +747,7 @@ function LangToggle({ full = false }: { full?: boolean }) {
       translate="no"
       onClick={() => switchTo(isUrdu ? "en" : "ur")}
       title={isUrdu ? "Switch to English" : "اردو میں دیکھیں"}
-      className={`notranslate inline-flex items-center gap-1.5 rounded-xl border border-gray-200 font-bold text-[#1E40AF] hover:bg-[#EFF6FF] transition-colors ${full ? "w-full justify-center px-4 py-2.5 text-sm" : "px-2.5 h-9 text-xs"}`}
+      className={`notranslate inline-flex items-center gap-1.5 rounded-sm border border-gray-200 font-bold text-[#1E40AF] hover:bg-[#EFF6FF] transition-colors ${full ? "w-full justify-center px-4 py-2.5 text-sm" : "px-2.5 h-9 text-xs"}`}
     >
       <Globe size={16} /> {isUrdu ? "English" : "اردو"}
     </button>
@@ -758,6 +766,7 @@ function Navbar() {
   // (its sub-categories show in the right pane).
   const [catsOpen, setCatsOpen] = useState(false);
   const [megaCat, setMegaCat] = useState<string | null>(null);
+  const [deskSearchFocus, setDeskSearchFocus] = useState(false);
   const catsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!catsOpen) return;
@@ -860,7 +869,7 @@ function Navbar() {
             <div className="hidden xl:flex items-center gap-6 flex-1 min-w-0">
               <div className="relative" ref={catsRef}>
                 <button onClick={() => { setCatsOpen(o => !o); setMegaCat(null); }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors ${catsOpen ? "bg-[#1E40AF] text-white" : "bg-[#EFF6FF] text-[#1E40AF] hover:bg-[#1E40AF] hover:text-white"}`}>
+                  className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-bold transition-colors border ${catsOpen ? "bg-[#1E40AF] text-white border-[#1E40AF]" : "bg-white text-[#1E40AF] border-[#1E40AF] hover:bg-[#1E40AF] hover:text-white"}`}>
                   <LayoutGrid size={15} /> Categories
                   <ChevronDown size={14} className={`transition-transform ${catsOpen ? "rotate-180" : ""}`} />
                 </button>
@@ -868,10 +877,10 @@ function Navbar() {
                   const activeCat = megaCat && allCats.includes(megaCat) ? megaCat : allCats[0];
                   const subs = catTree[activeCat] || [];
                   return (
-                    <div className="absolute left-0 top-full mt-2 z-50 flex bg-white rounded-2xl border border-gray-100 overflow-hidden"
-                      style={{ boxShadow: "0 24px 48px rgba(30,64,175,0.18)", width: 620 }}>
+                    <div className="absolute left-0 top-full mt-2 z-50 flex bg-white border border-gray-200 overflow-hidden"
+                      style={{ boxShadow: "0 12px 24px rgba(17,24,39,0.12)", width: 620 }}>
                       {/* Left pane: every category, scrollable */}
-                      <div className="w-60 max-h-[420px] overflow-y-auto border-r border-gray-100 py-2 bg-[#F8F9FB] flex-shrink-0">
+                      <div className="w-60 max-h-[420px] overflow-y-auto border-r border-gray-200 py-2 bg-[#F8F9FB] flex-shrink-0">
                         {allCats.map(c => (
                           <button key={c} onMouseEnter={() => setMegaCat(c)}
                             onClick={() => navigate(`/shop?cat=${encodeURIComponent(c)}`)}
@@ -886,12 +895,12 @@ function Navbar() {
                         <p className="text-sm font-black text-[#111827] mb-3">{activeCat}</p>
                         <div className="grid grid-cols-2 gap-1.5">
                           <Link to={`/shop?cat=${encodeURIComponent(activeCat)}`}
-                            className="px-3 py-2 rounded-lg text-sm font-bold text-[#1E40AF] bg-[#EFF6FF] hover:bg-[#1E40AF] hover:text-white transition-colors">
+                            className="px-3 py-2 rounded-sm text-sm font-bold text-[#1E40AF] bg-[#EFF6FF] hover:bg-[#1E40AF] hover:text-white transition-colors">
                             All {activeCat}
                           </Link>
                           {subs.map(s => (
                             <Link key={s} to={`/shop?sub=${encodeURIComponent(s)}`}
-                              className="px-3 py-2 rounded-lg text-sm font-medium text-[#374151] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors truncate">
+                              className="px-3 py-2 rounded-sm text-sm font-medium text-[#374151] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors truncate">
                               {s}
                             </Link>
                           ))}
@@ -902,24 +911,57 @@ function Navbar() {
                   );
                 })()}
               </div>
-              <Link to="/" className="text-sm font-semibold text-[#111827] hover:text-[#1E40AF] transition-colors">Home</Link>
-              <Link to="/shop" className="text-sm font-semibold text-[#111827] hover:text-[#1E40AF] transition-colors">Shop</Link>
+              <Link to="/" className="text-sm font-semibold text-[#111827] hover:text-[#1E40AF] transition-colors flex-shrink-0">Home</Link>
+              <Link to="/shop" className="text-sm font-semibold text-[#111827] hover:text-[#1E40AF] transition-colors flex-shrink-0">Shop</Link>
+
+              {/* Persistent desktop search — a hidden/toggle search only shows on
+                  hover intent, so it reads as an afterthought; a marketplace this
+                  size should surface search all the time. */}
+              <div className="relative flex-1 max-w-md ml-2">
+                <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={searchQ}
+                  onChange={e => setSearchQ(e.target.value)}
+                  onFocus={() => setDeskSearchFocus(true)}
+                  onBlur={() => setTimeout(() => setDeskSearchFocus(false), 150)}
+                  onKeyDown={e => { if (e.key === "Enter" && searchQ.trim()) { navigate(`/shop?q=${encodeURIComponent(searchQ)}`); setDeskSearchFocus(false); (e.target as HTMLInputElement).blur(); } }}
+                  placeholder="Search products, brands and categories..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-sm border border-gray-300 bg-[#F8F9FB] text-sm outline-none focus:border-[#1E40AF] focus:bg-white transition-colors"
+                />
+                {deskSearchFocus && q && (
+                  <div className="absolute left-0 right-0 top-full mt-2 bg-white border border-gray-200 overflow-hidden z-50" style={{ boxShadow: "0 12px 24px rgba(17,24,39,0.12)" }}>
+                    {results.length === 0 ? (
+                      <p className="px-4 py-3 text-sm text-[#6b7280]">No products match "{searchQ}".</p>
+                    ) : results.map(p => (
+                      <button key={p.id} onClick={() => { navigate(`/product/${p.id}`); setSearchQ(""); setDeskSearchFocus(false); }}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-[#F8F9FB] transition-colors border-b border-gray-50 last:border-0">
+                        <ProductImage src={p.image} alt="" className="w-9 h-9 rounded-sm object-cover bg-gray-50 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#111827] truncate">{p.name}</p>
+                          <p className="text-xs text-[#6b7280] truncate">{p.subcategory}{p.sellerStore ? ` · ${p.sellerStore}` : ""}</p>
+                        </div>
+                        <span className="text-sm font-bold text-[#1E40AF] flex-shrink-0">{fmt(p.price)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Actions */}
             <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ml-2">
               <div className="hidden md:block"><LangToggle /></div>
               <button onClick={() => setSearchOpen(o => !o)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
+                className="xl:hidden w-9 h-9 flex items-center justify-center rounded-sm hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
                 <Search size={18} />
               </button>
               <Link to="/wishlist"
-                className="w-9 h-9 hidden sm:flex items-center justify-center rounded-xl hover:bg-[#FFF7ED] text-[#111827] hover:text-[#F97316] transition-colors">
+                className="w-9 h-9 hidden sm:flex items-center justify-center rounded-sm hover:bg-[#FFF7ED] text-[#111827] hover:text-[#F97316] transition-colors">
                 <Heart size={18} />
               </Link>
               {user && (
                 <Link to="/messages"
-                  className="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
+                  className="relative w-9 h-9 flex items-center justify-center rounded-sm hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
                   <MessageCircle size={18} />
                   {unread > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#F97316] text-white text-[10px] font-black flex items-center justify-center">
@@ -929,12 +971,11 @@ function Navbar() {
                 </Link>
               )}
               <Link to={user ? "/account" : "/login"}
-                className="w-9 h-9 hidden sm:flex items-center justify-center rounded-xl hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
+                className="w-9 h-9 hidden sm:flex items-center justify-center rounded-sm hover:bg-[#EFF6FF] text-[#111827] hover:text-[#1E40AF] transition-colors">
                 <User size={18} />
               </Link>
               <span className="hidden sm:block w-px h-6 bg-gray-200 mx-1" />
-              <Link to="/cart" className="relative flex items-center gap-2 px-3.5 py-2 rounded-xl font-semibold text-sm transition-all active:scale-95"
-                style={{ background: "#1E40AF", color: "#fff", boxShadow: "0 4px 12px rgba(30,64,175,0.3)" }}>
+              <Link to="/cart" className="relative flex items-center gap-2 px-3.5 py-2 rounded-sm font-semibold text-sm transition-colors active:scale-95 bg-[#1E40AF] text-white hover:bg-[#1e3a8a]">
                 <ShoppingCart size={16} />
                 <span className="hidden sm:inline">Cart</span>
                 {cartCount > 0 && (
@@ -943,7 +984,7 @@ function Navbar() {
                   </span>
                 )}
               </Link>
-              <button onClick={() => setMenuOpen(o => !o)} className="xl:hidden w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors ml-0.5">
+              <button onClick={() => setMenuOpen(o => !o)} className="xl:hidden w-9 h-9 flex items-center justify-center rounded-sm hover:bg-gray-100 transition-colors ml-0.5">
                 {menuOpen ? <X size={20} /> : <Menu size={20} />}
               </button>
             </div>
@@ -958,19 +999,19 @@ function Navbar() {
                     autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)}
                     onBlur={() => { if (!searchQ.trim()) setSearchOpen(false); }}
                     placeholder="Search products..."
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-[#1E40AF]/20 text-sm outline-none focus:border-[#1E40AF] bg-[#F8F9FB]"
+                    className="flex-1 px-4 py-2.5 rounded-sm border border-gray-300 text-sm outline-none focus:border-[#1E40AF] bg-[#F8F9FB]"
                   />
-                  <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#1E40AF] text-white text-sm font-semibold">Search</button>
+                  <button type="submit" className="px-5 py-2.5 rounded-sm bg-[#1E40AF] text-white text-sm font-semibold">Search</button>
                 </div>
               </form>
               {searchQ.trim() && (
-                <div className="mt-2 bg-white rounded-xl border border-gray-100 overflow-hidden" style={{ boxShadow: "0 14px 36px rgba(30,64,175,0.16)" }}>
+                <div className="mt-2 bg-white border border-gray-200 overflow-hidden" style={{ boxShadow: "0 12px 24px rgba(17,24,39,0.12)" }}>
                   {results.length === 0 ? (
                     <p className="px-4 py-3 text-sm text-[#6b7280]">No products match “{searchQ}”.</p>
                   ) : results.map(p => (
                     <button key={p.id} onClick={() => { navigate(`/product/${p.id}`); setSearchOpen(false); setSearchQ(""); }}
                       className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-[#F8F9FB] transition-colors border-b border-gray-50 last:border-0">
-                      <ProductImage src={p.image} alt="" className="w-9 h-9 rounded-lg object-cover bg-gray-50 flex-shrink-0" />
+                      <ProductImage src={p.image} alt="" className="w-9 h-9 rounded-sm object-cover bg-gray-50 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-[#111827] truncate">{p.name}</p>
                         <p className="text-xs text-[#6b7280] truncate">{p.subcategory}{p.sellerStore ? ` · ${p.sellerStore}` : ""}</p>
@@ -990,8 +1031,8 @@ function Navbar() {
         {menuOpen && (
           <div className="xl:hidden border-t border-gray-100 bg-white mobile-menu-scroll">
             <div className="px-4 py-3 flex flex-col gap-1">
-              <Link to="/" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">Home</Link>
-              <Link to="/shop" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">Shop</Link>
+              <Link to="/" className="px-3 py-2.5 rounded-sm text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">Home</Link>
+              <Link to="/shop" className="px-3 py-2.5 rounded-sm text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">Shop</Link>
               {allCats.map(c => {
                 const subs = catTree[c] || [];
                 const open = openCat === c;
@@ -999,15 +1040,15 @@ function Navbar() {
                   <div key={c}>
                     <button
                       onClick={() => (subs.length ? setOpenCat(open ? null : c) : navigate(`/shop?cat=${encodeURIComponent(c)}`))}
-                      className="w-full px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center justify-between">
+                      className="w-full px-3 py-2.5 rounded-sm text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center justify-between">
                       <span>{c}</span>
                       {subs.length > 0 && <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />}
                     </button>
                     {open && subs.length > 0 && (
                       <div className="pl-3 ml-2 border-l-2 border-[#EFF6FF] flex flex-col mt-0.5 mb-1">
-                        <Link to={`/shop?cat=${encodeURIComponent(c)}`} className="px-3 py-2 rounded-xl text-sm font-semibold text-[#1E40AF] hover:bg-[#EFF6FF] transition-colors">All {c}</Link>
+                        <Link to={`/shop?cat=${encodeURIComponent(c)}`} className="px-3 py-2 rounded-sm text-sm font-semibold text-[#1E40AF] hover:bg-[#EFF6FF] transition-colors">All {c}</Link>
                         {subs.map(s => (
-                          <Link key={s} to={`/shop?sub=${encodeURIComponent(s)}`} className="px-3 py-2 rounded-xl text-sm font-medium text-[#374151] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">{s}</Link>
+                          <Link key={s} to={`/shop?sub=${encodeURIComponent(s)}`} className="px-3 py-2 rounded-sm text-sm font-medium text-[#374151] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors">{s}</Link>
                         ))}
                       </div>
                     )}
@@ -1016,21 +1057,21 @@ function Navbar() {
               })}
               <div className="border-t border-gray-100 mt-2 pt-2 flex flex-col gap-1">
                 <div className="md:hidden px-1 pb-1"><LangToggle full /></div>
-                <Link to="/wishlist" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#FFF7ED] hover:text-[#F97316] transition-colors flex items-center gap-2">
+                <Link to="/wishlist" className="px-3 py-2.5 rounded-sm text-sm font-semibold text-[#111827] hover:bg-[#FFF7ED] hover:text-[#F97316] transition-colors flex items-center gap-2">
                   <Heart size={16} /> Wishlist
                 </Link>
                 {user && (
-                  <Link to="/messages" className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center justify-between gap-2">
+                  <Link to="/messages" className="px-3 py-2.5 rounded-sm text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center justify-between gap-2">
                     <span className="flex items-center gap-2"><MessageCircle size={16} /> Messages</span>
                     {unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#F97316] text-white text-[10px] font-black flex items-center justify-center">{unread > 9 ? "9+" : unread}</span>}
                   </Link>
                 )}
                 {user && (user.role === "seller" || user.role === "admin") && (
-                  <Link to={user.role === "admin" ? "/admin" : "/seller"} className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center gap-2">
+                  <Link to={user.role === "admin" ? "/admin" : "/seller"} className="px-3 py-2.5 rounded-sm text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center gap-2">
                     {user.role === "admin" ? <ShieldCheck size={16} /> : <Package size={16} />} {user.role === "admin" ? "Admin" : "Seller Dashboard"}
                   </Link>
                 )}
-                <Link to={user ? "/account" : "/login"} className="px-3 py-2.5 rounded-xl text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center gap-2">
+                <Link to={user ? "/account" : "/login"} className="px-3 py-2.5 rounded-sm text-sm font-semibold text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1E40AF] transition-colors flex items-center gap-2">
                   <User size={16} /> {user ? user.name : "Login / Register"}
                 </Link>
               </div>
@@ -1066,9 +1107,9 @@ function Footer() {
               <input
                 type="email" required value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="Enter your email"
-                className="flex-1 md:w-64 px-4 py-2.5 rounded-xl text-sm text-gray-900 bg-white border border-white placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-[#F97316]"
+                className="flex-1 md:w-64 px-4 py-2.5 rounded-sm text-sm text-gray-900 bg-white border border-white placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-[#F97316]"
               />
-              <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#F97316] text-white text-sm font-semibold hover:bg-orange-500 transition-colors flex items-center gap-2">
+              <button type="submit" className="px-5 py-2.5 rounded-sm bg-[#F97316] text-white text-sm font-semibold hover:bg-orange-500 transition-colors flex items-center gap-2">
                 <Send size={14} /> Subscribe
               </button>
             </form>
@@ -1093,7 +1134,7 @@ function Footer() {
                 href="https://www.instagram.com/ahmadmart.store"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex w-full items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-[#F97316] transition-colors text-sm font-semibold text-white"
+                className="flex w-full items-center justify-center gap-2 px-5 py-2.5 rounded-sm bg-white/10 hover:bg-[#F97316] transition-colors text-sm font-semibold text-white"
               >
                 <Instagram size={18} /> Follow us on Instagram
               </a>
@@ -1147,11 +1188,13 @@ function Footer() {
             <p className="text-gray-500 text-sm">© 2026 Ahmad Mart. All rights reserved.</p>
             <p className="text-gray-500 text-xs mt-1">Made by <a href="https://linkin.bio/ahmadraza/" target="_blank" rel="noopener noreferrer" className="text-[#F97316] font-semibold hover:underline">Ahmad Raza</a></p>
           </div>
-          <div className="flex gap-2 items-center">
-            <span className="text-gray-500 text-xs">We accept:</span>
-            <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center justify-center">
+            <span className="text-gray-500 text-xs mr-1">We accept:</span>
+            <div className="flex flex-wrap gap-2">
               {["JazzCash", "SadaPay", "NayaPay", "Easypaisa", "COD"].map(m => (
-                <span key={m} className="px-2 py-1 bg-white/10 rounded text-xs text-gray-300 font-medium">{m}</span>
+                <span key={m} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-sm text-xs text-gray-300 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#F97316]" />{m}
+                </span>
               ))}
             </div>
           </div>
@@ -1162,23 +1205,33 @@ function Footer() {
 }
 
 // ─── Section Header ───────────────────────────────────────────────────────────
-function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+function SectionHeader({ title, subtitle, eyebrow, action }: { title: string; subtitle?: string; eyebrow?: string; action?: React.ReactNode }) {
   const ref = useReveal<HTMLDivElement>();
   return (
     <div ref={ref} className="reveal-up flex items-end justify-between mb-8">
       <div>
-        <h2 className="text-2xl sm:text-3xl font-black text-[#111827]">{title}</h2>
-        {subtitle && <p className="text-[#6b7280] mt-1 text-sm">{subtitle}</p>}
+        {eyebrow && <p className="text-xs font-bold uppercase tracking-widest text-[#F97316] mb-1.5">{eyebrow}</p>}
+        <h2 className="text-2xl sm:text-3xl font-black text-[#111827] tracking-tight">{title}</h2>
+        {subtitle && <p className="text-[#6b7280] mt-1.5 text-sm">{subtitle}</p>}
       </div>
       {action}
     </div>
   );
 }
 
+// Small pill link used as the "View All" action next to section headers.
+function ViewAllLink({ to }: { to: string }) {
+  return (
+    <Link to={to} className="flex items-center gap-1 text-xs font-bold text-[#1E40AF] border border-[#1E40AF] hover:bg-[#1E40AF] hover:text-white px-4 py-2 rounded-sm transition-colors flex-shrink-0">
+      View All <ChevronRight size={14} />
+    </Link>
+  );
+}
+
 // ─── Home Page ────────────────────────────────────────────────────────────────
 function HomePage() {
   const navigate = useNavigate();
-  const { products } = useContext(Store);
+  const { products, categoryImages } = useContext(Store);
   const [activeSlide, setActiveSlide] = useState(0);
 
   const slides = [
@@ -1240,6 +1293,9 @@ function HomePage() {
   // category (from any seller) automatically gets its own block here, with no
   // hardcoding needed. Colour themes cycle so the blocks stay visually varied.
   const showcaseCats = Array.from(new Set(products.map(p => p.category))).filter(Boolean);
+  // One thumbnail per category for the "Shop by Category" strip — an
+  // admin-uploaded photo if one's been set, otherwise a product photo.
+  const catThumbs = showcaseCats.map(cat => ({ cat, image: categoryImages[cat] || products.find(p => p.category === cat && p.image)?.image }));
   const showcaseThemes = [
     { from: "#EFF6FF", to: "#DBEAFE", shadow: "rgba(30,64,175,0.1)", accent: "#1E40AF" },
     { from: "#FFFBEB", to: "#FEF3C7", shadow: "rgba(180,83,9,0.1)", accent: "#B45309" },
@@ -1251,25 +1307,23 @@ function HomePage() {
   return (
     <div>
       {/* Hero Slider */}
-      <section className="relative overflow-hidden rounded-2xl mx-4 sm:mx-6 lg:mx-8 mb-12"
-        style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.18)" }}>
+      <section className="relative overflow-hidden mb-12">
         {slides.map((slide, i) => (
           <div key={i} className={`absolute inset-0 transition-opacity duration-700 ${i === activeSlide ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
             <div className={`w-full h-full bg-gradient-to-br ${slide.bg} flex flex-col lg:flex-row items-center min-h-[380px] sm:min-h-[470px] relative overflow-hidden`}>
               {/* soft dot texture */}
               <div className="absolute top-0 left-0 w-40 h-40 opacity-20" style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.6) 1.5px, transparent 1.5px)", backgroundSize: "16px 16px" }} />
               <div className="flex-1 px-8 sm:px-12 py-9 text-white z-10">
-                <span className="inline-block px-4 py-1.5 rounded-full bg-[#F97316] text-white text-xs font-bold mb-4 shadow-lg">{slide.badge}</span>
+                <span className="inline-block px-4 py-1.5 rounded-sm bg-[#F97316] text-white text-xs font-bold mb-4">{slide.badge}</span>
                 <h1 className="text-3xl sm:text-5xl font-black leading-[1.1] mb-4 max-w-xl">{slide.title} <span className="text-[#F97316]">{slide.highlight}</span></h1>
                 <p className="text-blue-100 text-sm sm:text-base mb-6 max-w-md">{slide.sub}</p>
                 <div className="flex flex-wrap gap-3 mb-7">
                   <button onClick={() => navigate(slide.link)}
-                    className="px-6 py-3 rounded-xl bg-[#F97316] text-white font-bold text-sm hover:bg-orange-500 transition-all active:scale-95 inline-flex items-center gap-2"
-                    style={{ boxShadow: "0 8px 20px rgba(249,115,22,0.45)" }}>
+                    className="px-6 py-3 rounded-sm bg-[#F97316] text-white font-bold text-sm hover:bg-orange-500 transition-colors active:scale-95 inline-flex items-center gap-2">
                     {slide.cta} <ArrowRight size={16} />
                   </button>
                   <button onClick={() => navigate("/shop")}
-                    className="px-6 py-3 rounded-xl bg-white/15 text-white font-bold text-sm hover:bg-white/25 transition-all border border-white/30 inline-flex items-center gap-2 backdrop-blur-sm">
+                    className="px-6 py-3 rounded-sm bg-transparent text-white font-bold text-sm hover:bg-white/10 transition-colors border border-white/50 inline-flex items-center gap-2">
                     <SlidersHorizontal size={15} /> Explore Categories
                   </button>
                 </div>
@@ -1305,16 +1359,37 @@ function HomePage() {
       </section>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Shop by Category — fast visual navigation, scales to any number of categories */}
+        {catThumbs.length > 0 && (
+          <section className="mb-10">
+            <p className="text-xs font-bold uppercase tracking-widest text-[#F97316] mb-1.5">Browse</p>
+            <h2 className="text-xl sm:text-2xl font-black text-[#111827] tracking-tight mb-5">Shop by Category</h2>
+            <div className="flex gap-5 overflow-x-auto pb-1 -mx-1 px-1">
+              {catThumbs.map(({ cat, image }) => (
+                <button key={cat} onClick={() => navigate(`/shop?cat=${encodeURIComponent(cat)}`)}
+                  className="flex flex-col items-center gap-2 flex-shrink-0 w-24 group">
+                  <div className="w-20 h-20 rounded-sm overflow-hidden bg-[#F8F9FB] border border-gray-200 flex items-center justify-center group-hover:border-[#1E40AF] transition-colors">
+                    <ProductImage src={image} alt={cat} className="w-full h-full object-cover" />
+                  </div>
+                  <span className="text-xs font-semibold text-[#374151] text-center leading-tight group-hover:text-[#1E40AF] transition-colors line-clamp-2">{cat}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Feature bar */}
-        <div className="bg-white rounded-2xl mb-6 grid grid-cols-2 lg:grid-cols-4 lg:divide-x divide-gray-100" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <div className="bg-white mb-14 grid grid-cols-2 lg:grid-cols-4 lg:divide-x divide-gray-200 border border-gray-200">
           {[
             { icon: Truck, title: "Fast Delivery", sub: "Across Pakistan" },
             { icon: RotateCcw, title: "7 Days Return", sub: "Hassle free returns" },
             { icon: Shield, title: "Secure Payment", sub: "100% secure checkout" },
             { icon: Headphones, title: "24/7 Support", sub: "We're here to help" },
           ].map(({ icon: Icon, title, sub }) => (
-            <div key={title} className="flex items-center gap-3 px-5 py-5">
-              <div className="w-11 h-11 rounded-full bg-[#EFF6FF] flex items-center justify-center flex-shrink-0"><Icon size={20} className="text-[#1E40AF]" /></div>
+            <div key={title} className="flex items-center gap-3.5 px-5 py-6">
+              <div className="w-11 h-11 rounded-sm bg-[#EFF6FF] flex items-center justify-center flex-shrink-0">
+                <Icon size={20} className="text-[#1E40AF]" />
+              </div>
               <div className="min-w-0"><p className="font-bold text-[#111827] text-sm">{title}</p><p className="text-xs text-[#6b7280] truncate">{sub}</p></div>
             </div>
           ))}
@@ -1323,13 +1398,10 @@ function HomePage() {
         {/* Featured Products */}
         <section className="mb-14">
           <SectionHeader
+            eyebrow="Curated For You"
             title="Featured Products"
             subtitle="Hand-picked for quality and value"
-            action={
-              <Link to="/shop" className="text-sm font-bold text-[#1E40AF] hover:text-[#F97316] flex items-center gap-1 transition-colors">
-                View All <ChevronRight size={16} />
-              </Link>
-            }
+            action={<ViewAllLink to="/shop" />}
           />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {products.length === 0 ? <SkeletonGrid count={4} /> : featured.map(p => <ProductCard key={p.id} product={p} />)}
@@ -1339,13 +1411,10 @@ function HomePage() {
         {/* Best Sellers */}
         <section className="mb-14">
           <SectionHeader
+            eyebrow="Top Rated"
             title="Best Sellers"
             subtitle="Most loved products by our customers"
-            action={
-              <Link to="/shop" className="text-sm font-bold text-[#1E40AF] hover:text-[#F97316] flex items-center gap-1 transition-colors">
-                View All <ChevronRight size={16} />
-              </Link>
-            }
+            action={<ViewAllLink to="/shop" />}
           />
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {products.length === 0 ? <SkeletonGrid count={8} /> : bestsellers.slice(0, 8).map(p => <ProductCard key={p.id} product={p} />)}
@@ -1361,23 +1430,22 @@ function HomePage() {
               if (items.length === 0) return null;
               const theme = showcaseThemes[i % showcaseThemes.length];
               return (
-                <div key={cat} className="rounded-2xl p-6"
-                  style={{ background: `linear-gradient(to bottom right, ${theme.from}, ${theme.to})`, boxShadow: `0 4px 20px ${theme.shadow}` }}>
+                <div key={cat} className="p-6 border" style={{ background: theme.from, borderColor: theme.accent + "30" }}>
                   <div className="flex items-center justify-between mb-5">
                     <div>
                       <h3 className="text-lg font-black text-[#111827]">{cat}</h3>
                       <p className="text-sm text-[#6b7280]">Top picks in {cat}</p>
                     </div>
-                    <Link to={`/shop?cat=${encodeURIComponent(cat)}`} className="text-xs font-bold hover:text-[#F97316] flex items-center gap-1" style={{ color: theme.accent }}>
+                    <Link to={`/shop?cat=${encodeURIComponent(cat)}`}
+                      className="text-xs font-bold flex items-center gap-1 border bg-white hover:bg-transparent px-3 py-1.5 rounded-sm transition-colors flex-shrink-0" style={{ color: theme.accent, borderColor: theme.accent }}>
                       View All <ChevronRight size={13} />
                     </Link>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {items.map(p => (
                       <Link key={p.id} to={`/product/${p.id}`}
-                        className="bg-white rounded-xl p-3 hover:-translate-y-0.5 transition-transform"
-                        style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-                        <ProductImage src={p.image} alt={p.name} className="w-full h-28 object-contain rounded-lg mb-2 bg-white" />
+                        className="bg-white rounded-sm p-3 border border-gray-200 hover:border-current transition-colors" style={{ color: theme.accent }}>
+                        <ProductImage src={p.image} alt={p.name} className="w-full h-28 object-contain rounded-sm mb-2 bg-white" />
                         <p className="text-xs font-semibold text-[#111827] line-clamp-2 mb-1">{p.name}</p>
                         <p className="text-xs font-bold" style={{ color: theme.accent }}>{fmt(p.price)}</p>
                       </Link>
@@ -1392,7 +1460,7 @@ function HomePage() {
 
         {/* Why Choose Us */}
         <section className="mb-14">
-          <SectionHeader title="Why Choose Ahmad Mart?" subtitle="We put our customers first, always." />
+          <SectionHeader eyebrow="Our Promise" title="Why Choose Ahmad Mart?" subtitle="We put our customers first, always." />
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
               { icon: Award, title: "Premium Quality", desc: "Every product is checked for quality and sourced from verified suppliers.", color: "#1E40AF" },
@@ -1402,9 +1470,8 @@ function HomePage() {
               { icon: RotateCcw, title: "Easy Returns", desc: "Not satisfied? Return within 7 days for an easy, no fuss refund.", color: "#DC2626" },
               { icon: Headphones, title: "24/7 Support", desc: "Our team is always here to help. Reach us anytime on WhatsApp.", color: "#B45309" },
             ].map(({ icon: Icon, title, desc, color }) => (
-              <div key={title} className="bg-white rounded-2xl p-6 hover:-translate-y-1 transition-transform duration-200"
-                style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+              <div key={title} className="bg-white rounded-sm p-6 border border-gray-200 hover:border-gray-300 transition-colors">
+                <div className="w-12 h-12 rounded-sm flex items-center justify-center mb-4"
                   style={{ background: color, color: "#fff" }}>
                   <Icon size={24} />
                 </div>
@@ -1418,14 +1485,13 @@ function HomePage() {
         {/* Reviews */}
         {REVIEWS.length > 0 && (
         <section className="mb-14">
-          <SectionHeader title="What Our Customers Say" subtitle="Real reviews from real customers across Pakistan" />
+          <SectionHeader eyebrow="Testimonials" title="What Our Customers Say" subtitle="Real reviews from real customers across Pakistan" />
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {REVIEWS.map(r => (
-              <div key={r.id} className="bg-white rounded-2xl p-6 hover:-translate-y-0.5 transition-transform"
-                style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+              <div key={r.id} className="bg-white rounded-sm p-6 border border-gray-200 hover:border-gray-300 transition-colors">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0"
-                    style={{ background: "linear-gradient(135deg, #1E40AF, #F97316)" }}>
+                    style={{ background: "#1E40AF" }}>
                     {r.avatar}
                   </div>
                   <div>
@@ -1507,14 +1573,14 @@ function ShopPage() {
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Filters Sidebar */}
         <div className={`lg:w-64 flex-shrink-0 ${showFilters ? "block" : "hidden lg:block"}`}>
-          <div className="bg-white rounded-2xl p-5 sticky top-24" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+          <div className="bg-white rounded-sm p-5 sticky top-24 border border-gray-200">
             <h3 className="font-bold text-[#111827] mb-4 flex items-center gap-2"><SlidersHorizontal size={16} /> Filters</h3>
 
             <div className="mb-5">
               <label className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-2 block">Search</label>
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Search products..."
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#1E40AF] bg-gray-50" />
+                className="w-full px-3 py-2 rounded-sm border border-gray-200 text-sm outline-none focus:border-[#1E40AF] bg-gray-50" />
             </div>
 
             <div className="mb-5">
@@ -1522,7 +1588,7 @@ function ShopPage() {
               <div className="flex flex-col gap-1">
                 {cats.map(c => (
                   <button key={c} onClick={() => { setCategory(c); setSubcategory("All"); }}
-                    className={`text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors ${category === c ? "bg-[#1E40AF] text-white" : "text-[#374151] hover:bg-gray-100"}`}>
+                    className={`text-left px-3 py-2 rounded-sm text-sm font-medium transition-colors ${category === c ? "bg-[#1E40AF] text-white" : "text-[#374151] hover:bg-gray-100"}`}>
                     {c}
                   </button>
                 ))}
@@ -1534,7 +1600,7 @@ function ShopPage() {
               <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
                 {subs.map(s => (
                   <button key={s} onClick={() => setSubcategory(s)}
-                    className={`text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors ${subcategory === s ? "bg-[#F97316] text-white" : "text-[#374151] hover:bg-gray-100"}`}>
+                    className={`text-left px-3 py-2 rounded-sm text-sm font-medium transition-colors ${subcategory === s ? "bg-[#F97316] text-white" : "text-[#374151] hover:bg-gray-100"}`}>
                     {s}
                   </button>
                 ))}
@@ -1553,7 +1619,7 @@ function ShopPage() {
             </div>
 
             <button onClick={() => { setSearch(""); setCategory("All"); setSubcategory("All"); setSort("random"); setMinPrice(0); setMaxPrice(10000); }}
-              className="w-full py-2 rounded-xl border border-[#1E40AF]/30 text-[#1E40AF] text-sm font-semibold hover:bg-[#EFF6FF] transition-colors">
+              className="w-full py-2 rounded-sm border border-[#1E40AF]/30 text-[#1E40AF] text-sm font-semibold hover:bg-[#EFF6FF] transition-colors">
               Clear Filters
             </button>
           </div>
@@ -1563,13 +1629,13 @@ function ShopPage() {
         <div className="flex-1">
           <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
             <button onClick={() => setShowFilters(o => !o)}
-              className="lg:hidden flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1E40AF] text-white text-sm font-semibold">
+              className="lg:hidden flex items-center gap-2 px-4 py-2 rounded-sm bg-[#1E40AF] text-white text-sm font-semibold">
               <Filter size={15} /> {showFilters ? "Hide" : "Show"} Filters
             </button>
             <div className="flex items-center gap-2 ml-auto">
               <label className="text-xs text-[#6b7280] font-semibold">Sort by:</label>
               <select value={sort} onChange={e => setSort(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-[#1E40AF] bg-white">
+                className="px-3 py-2 rounded-sm border border-gray-200 text-sm outline-none focus:border-[#1E40AF] bg-white">
                 <option value="random">Random</option>
                 <option value="popular">Most Popular</option>
                 <option value="rating">Highest Rated</option>
@@ -1584,7 +1650,7 @@ function ShopPage() {
               <SkeletonGrid count={8} />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-2xl" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+            <div className="text-center py-20 bg-white rounded-sm border border-gray-200">
               <Package size={48} className="mx-auto text-gray-300 mb-4" />
               <p className="font-bold text-[#111827] mb-2">No products found</p>
               <p className="text-[#6b7280] text-sm">Try adjusting your filters or search query</p>
@@ -1655,18 +1721,18 @@ function ReviewSection({ productId }: { productId: number }) {
   return (
     <div className="space-y-6">
       {/* Write a review */}
-      <div className="rounded-2xl border border-gray-100 bg-[#F8F9FB] p-5">
+      <div className="rounded-sm border border-gray-100 bg-[#F8F9FB] p-5">
         <h4 className="font-bold text-[#111827] mb-4">Write a Review</h4>
         {done && (
-          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-center gap-2 text-sm text-emerald-700 font-semibold">
+          <div className="mb-4 rounded-sm border border-emerald-200 bg-emerald-50 p-3 flex items-center gap-2 text-sm text-emerald-700 font-semibold">
             <CheckCircle size={16} /> Thanks for your review! It's now live below.
           </div>
         )}
         <div className="space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Your name"
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
-            <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white">
+              className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
+            <div className="flex items-center gap-2 px-4 py-3 rounded-sm border border-gray-200 bg-white">
               <span className="text-sm text-[#6b7280] mr-1">Your rating:</span>
               {[1, 2, 3, 4, 5].map(s => (
                 <button key={s} type="button"
@@ -1679,12 +1745,12 @@ function ReviewSection({ productId }: { productId: number }) {
           </div>
           <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
             placeholder="Share your experience with this product..."
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF] resize-none" />
+            className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF] resize-none" />
 
           {/* Photo of received product */}
           {imageData ? (
             <div className="flex items-center gap-3">
-              <img src={imageData} alt="Your product" className="w-16 h-16 rounded-xl object-cover border border-gray-200" />
+              <img src={imageData} alt="Your product" className="w-16 h-16 rounded-sm object-cover border border-gray-200" />
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-[#111827] truncate max-w-[180px]">{imageName}</p>
                 <button onClick={() => { setImageData(""); setImageName(""); }}
@@ -1692,7 +1758,7 @@ function ReviewSection({ productId }: { productId: number }) {
               </div>
             </div>
           ) : (
-            <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-gray-300 bg-white text-sm font-semibold text-[#374151] cursor-pointer hover:border-[#1E40AF] transition-colors">
+            <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-sm border border-dashed border-gray-300 bg-white text-sm font-semibold text-[#374151] cursor-pointer hover:border-[#1E40AF] transition-colors">
               <ZoomIn size={15} className="text-[#1E40AF]" /> Add a photo of your product (optional)
               <input type="file" accept="image/jpeg,image/png" onChange={pickImage} className="hidden" />
             </label>
@@ -1700,8 +1766,8 @@ function ReviewSection({ productId }: { productId: number }) {
 
           {err && <p className="text-xs text-red-500 font-semibold">{err}</p>}
           <button onClick={submit} disabled={busy}
-            className="px-6 py-3 rounded-xl bg-[#1E40AF] text-white font-bold text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
-            style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
+            className="px-6 py-3 rounded-sm bg-[#1E40AF] text-white font-bold text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
+            >
             {busy ? "Posting..." : "Submit Review"}
           </button>
         </div>
@@ -1712,9 +1778,9 @@ function ReviewSection({ productId }: { productId: number }) {
         <div className="space-y-4">
           <p className="font-bold text-[#111827] text-sm">Customer Reviews ({reviews.length})</p>
           {reviews.map(r => (
-            <div key={r.id} className="flex gap-4 p-4 bg-white rounded-xl border border-gray-100">
+            <div key={r.id} className="flex gap-4 p-4 bg-white rounded-sm border border-gray-100">
               <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #1E40AF, #F97316)" }}>
+                style={{ background: "#1E40AF" }}>
                 {r.name.trim().slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0">
@@ -1725,7 +1791,7 @@ function ReviewSection({ productId }: { productId: number }) {
                 </div>
                 <p className="text-[#374151] text-sm">"{r.text}"</p>
                 {r.image && (
-                  <img src={r.image} alt="Customer product" className="mt-2 w-24 h-24 rounded-xl object-cover border border-gray-200" />
+                  <img src={r.image} alt="Customer product" className="mt-2 w-24 h-24 rounded-sm object-cover border border-gray-200" />
                 )}
               </div>
             </div>
@@ -1761,7 +1827,7 @@ function AskSeller({ product }: { product: Product }) {
   };
 
   return (
-    <div className="mt-4 rounded-xl border border-gray-200 p-4">
+    <div className="mt-4 rounded-sm border border-gray-200 p-4">
       {!open ? (
         <button onClick={() => { setOpen(true); setSent(false); }} className="flex items-center gap-2 text-sm font-bold text-[#1E40AF]">
           <MessageCircle size={16} /> Ask {product.sellerStore || "the seller"} a question
@@ -1775,11 +1841,11 @@ function AskSeller({ product }: { product: Product }) {
         <div>
           <p className="text-sm font-bold text-[#111827] mb-2 flex items-center gap-1.5"><MessageCircle size={15} className="text-[#1E40AF]" /> Ask {product.sellerStore || "the seller"}</p>
           <textarea value={body} onChange={e => setBody(e.target.value)} rows={2} placeholder="e.g. Is this available in black? Any discount on 2?"
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF] resize-none mb-2" />
+            className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF] resize-none mb-2" />
           {err && <p className="text-xs text-red-500 mb-2">{err}</p>}
           <div className="flex gap-2">
-            <button onClick={submit} disabled={busy || !body.trim()} className="px-4 py-2 rounded-xl bg-[#1E40AF] text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5"><Send size={14} /> {busy ? "Sending…" : "Send"}</button>
-            <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl border border-gray-200 text-[#374151] text-sm font-bold">Cancel</button>
+            <button onClick={submit} disabled={busy || !body.trim()} className="px-4 py-2 rounded-sm bg-[#1E40AF] text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5"><Send size={14} /> {busy ? "Sending…" : "Send"}</button>
+            <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-sm border border-gray-200 text-[#374151] text-sm font-bold">Cancel</button>
           </div>
         </div>
       )}
@@ -1825,7 +1891,7 @@ function ProductDetailPage() {
     <div className="max-w-7xl mx-auto px-4 py-20 text-center">
       <Package size={64} className="mx-auto text-gray-300 mb-4" />
       <h2 className="font-black text-2xl text-[#111827] mb-2">Product not found</h2>
-      <button onClick={() => navigate("/shop")} className="mt-4 px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Back to Shop</button>
+      <button onClick={() => navigate("/shop")} className="mt-4 px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm">Back to Shop</button>
     </div>
   );
 
@@ -1866,16 +1932,15 @@ function ProductDetailPage() {
       <div className="grid lg:grid-cols-2 gap-8 mb-12">
         {/* Gallery */}
         <div>
-          <div className="bg-white rounded-2xl overflow-hidden mb-3 relative group cursor-zoom-in"
+          <div className="bg-white rounded-sm overflow-hidden mb-3 relative group cursor-zoom-in border border-gray-200"
             onClick={() => setZoomOpen(true)}
-            style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.1)", aspectRatio: "4/5" }}>
+            style={{ aspectRatio: "4/5" }}>
             <ProductImage src={product.images[activeImg]} alt={product.name}
               className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" />
             {product.badge && (
               <div className="absolute top-4 left-4"><Badge type={product.badge} /></div>
             )}
-            <div className="absolute bottom-4 right-4 w-9 h-9 rounded-full bg-white/80 flex items-center justify-center"
-              style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}>
+            <div className="absolute bottom-4 right-4 w-9 h-9 rounded-full bg-white/80 border border-gray-200 flex items-center justify-center">
               <ZoomIn size={16} className="text-[#1E40AF]" />
             </div>
           </div>
@@ -1892,8 +1957,7 @@ function ProductDetailPage() {
           <div className="flex gap-2">
             {product.images.map((img, i) => (
               <button key={i} onClick={() => setActiveImg(i)}
-                className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all ${i === activeImg ? "border-[#1E40AF] scale-95" : "border-transparent"}`}
-                style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
+                className={`w-16 h-16 rounded-sm overflow-hidden border-2 transition-all ${i === activeImg ? "border-[#1E40AF] scale-95" : "border-gray-200"}`}>
                 <ProductImage src={img} alt="" className="w-full h-full object-cover" />
               </button>
             ))}
@@ -1946,7 +2010,7 @@ function ProductDetailPage() {
               <div className="flex flex-wrap gap-2">
                 {product.sizes!.map(s => (
                   <button key={s} onClick={() => { setSelSize(s); setVariantErr(""); }}
-                    className={`min-w-[44px] px-3 py-2 rounded-xl border-2 text-sm font-bold transition-all active:scale-95 ${selSize === s ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-gray-200 text-[#374151] hover:border-[#1E40AF] hover:text-[#1E40AF]"}`}>
+                    className={`min-w-[44px] px-3 py-2 rounded-sm border-2 text-sm font-bold transition-all active:scale-95 ${selSize === s ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-gray-200 text-[#374151] hover:border-[#1E40AF] hover:text-[#1E40AF]"}`}>
                     {s}
                   </button>
                 ))}
@@ -1959,7 +2023,7 @@ function ProductDetailPage() {
               <div className="flex flex-wrap gap-2">
                 {product.colors!.map(c => (
                   <button key={c} onClick={() => { setSelColor(c); setVariantErr(""); }}
-                    className={`px-3 py-2 rounded-xl border-2 text-sm font-bold transition-all active:scale-95 ${selColor === c ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-gray-200 text-[#374151] hover:border-[#1E40AF] hover:text-[#1E40AF]"}`}>
+                    className={`px-3 py-2 rounded-sm border-2 text-sm font-bold transition-all active:scale-95 ${selColor === c ? "border-[#1E40AF] bg-[#1E40AF] text-white" : "border-gray-200 text-[#374151] hover:border-[#1E40AF] hover:text-[#1E40AF]"}`}>
                     {c}
                   </button>
                 ))}
@@ -1970,8 +2034,7 @@ function ProductDetailPage() {
 
           {/* Qty + Actions / Service contact */}
           <div className="flex flex-wrap items-center gap-3 mb-6">
-            <div className="flex items-center rounded-xl overflow-hidden border border-gray-200"
-              style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+            <div className="flex items-center rounded-sm overflow-hidden border border-gray-200">
               <button onClick={() => setQty(q => Math.max(1, q - 1))}
                 className="w-10 h-11 flex items-center justify-center hover:bg-gray-100 transition-colors text-[#374151]">
                 <Minus size={16} />
@@ -1983,18 +2046,16 @@ function ProductDetailPage() {
               </button>
             </div>
             <button onClick={handleAddToCart}
-              className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 ${added ? "bg-emerald-500 text-white" : "bg-[#1E40AF] text-white hover:bg-[#1e3a8a]"}`}
-              style={{ boxShadow: added ? "0 4px 16px rgba(16,185,129,0.4)" : "0 4px 16px rgba(30,64,175,0.3)" }}>
+              className={`flex-1 min-w-[140px] flex items-center justify-center gap-2 py-3 rounded-sm font-bold text-sm transition-colors active:scale-95 ${added ? "bg-emerald-500 text-white" : "bg-[#1E40AF] text-white hover:bg-[#1e3a8a]"}`}>
               {added ? <CheckCircle size={16} /> : <ShoppingCart size={16} />}
               {added ? "Added to Cart!" : "Add to Cart"}
             </button>
             <button onClick={() => { if (!variantOk()) return; addToCart(product, qty, variant); navigate("/checkout"); }}
-              className="flex-1 min-w-[120px] py-3 rounded-xl bg-[#F97316] text-white font-bold text-sm hover:bg-orange-500 transition-all active:scale-95"
-              style={{ boxShadow: "0 4px 16px rgba(249,115,22,0.35)" }}>
+              className="flex-1 min-w-[120px] py-3 rounded-sm bg-[#F97316] text-white font-bold text-sm hover:bg-orange-500 transition-colors active:scale-95">
               Buy Now
             </button>
             <button onClick={() => toggleWishlist(product)}
-              className={`w-11 h-11 rounded-xl flex items-center justify-center border-2 transition-all active:scale-95 ${inWishlist(product.id) ? "border-red-300 bg-red-50" : "border-gray-200 hover:border-red-300"}`}>
+              className={`w-11 h-11 rounded-sm flex items-center justify-center border-2 transition-all active:scale-95 ${inWishlist(product.id) ? "border-red-300 bg-red-50" : "border-gray-200 hover:border-red-300"}`}>
               <Heart size={18} className={inWishlist(product.id) ? "fill-red-500 text-red-500" : "text-gray-400"} />
             </button>
           </div>
@@ -2006,7 +2067,7 @@ function ProductDetailPage() {
               { icon: RotateCcw, text: "7 Day Return" },
               { icon: Shield, text: "Secure Pay" },
             ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-2 p-3 bg-[#F8F9FB] rounded-xl">
+              <div key={text} className="flex items-center gap-2 p-3 bg-[#F8F9FB] rounded-sm">
                 <Icon size={14} className="text-[#1E40AF] flex-shrink-0" />
                 <span className="text-xs font-semibold text-[#374151]">{text}</span>
               </div>
@@ -2016,7 +2077,7 @@ function ProductDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-2xl mb-10" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="bg-white rounded-sm mb-10 border border-gray-200">
         <div className="flex border-b border-gray-100">
           {(["desc", "specs", "reviews"] as const).filter(t => !(t === "specs" && Object.keys(product.specs).length === 0)).map(t => {
             const labels = { desc: "Description", specs: "Specifications", reviews: `Reviews (${product.reviews + getProductReviews(product.id).length})` };
@@ -2035,12 +2096,12 @@ function ProductDetailPage() {
             <div className="grid sm:grid-cols-2 gap-3">
               {Object.entries(product.specs).map(([k, v]) => (
                 v ? (
-                  <div key={k} className="flex items-center justify-between p-3 bg-[#F8F9FB] rounded-xl">
+                  <div key={k} className="flex items-center justify-between p-3 bg-[#F8F9FB] rounded-sm">
                     <span className="text-xs font-semibold text-[#6b7280]">{k}</span>
                     <span className="text-xs font-bold text-[#111827]">{v}</span>
                   </div>
                 ) : (
-                  <div key={k} className="flex items-center gap-2 p-3 bg-[#F8F9FB] rounded-xl sm:col-span-2">
+                  <div key={k} className="flex items-center gap-2 p-3 bg-[#F8F9FB] rounded-sm sm:col-span-2">
                     <CheckCircle size={14} className="text-[#1E40AF] flex-shrink-0" />
                     <span className="text-xs font-semibold text-[#374151]">{k}</span>
                   </div>
@@ -2055,9 +2116,9 @@ function ProductDetailPage() {
               <div className="space-y-4">
                 <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide">More customer feedback</p>
                 {REVIEWS.slice(0, 3).map(r => (
-                  <div key={r.id} className="flex gap-4 p-4 bg-[#F8F9FB] rounded-xl">
+                  <div key={r.id} className="flex gap-4 p-4 bg-[#F8F9FB] rounded-sm">
                     <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs flex-shrink-0"
-                      style={{ background: "linear-gradient(135deg, #1E40AF, #F97316)" }}>
+                      style={{ background: "#1E40AF" }}>
                       {r.avatar}
                     </div>
                     <div>
@@ -2104,8 +2165,8 @@ function CartPage() {
       <ShoppingCart size={64} className="mx-auto text-gray-300 mb-4" />
       <h2 className="font-black text-2xl text-[#111827] mb-2">Your cart is empty</h2>
       <p className="text-[#6b7280] text-sm mb-6">Start shopping to add products to your cart</p>
-      <button onClick={() => navigate("/shop")} className="px-8 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm"
-        style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
+      <button onClick={() => navigate("/shop")} className="px-8 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm"
+        >
         Continue Shopping
       </button>
     </div>
@@ -2118,10 +2179,9 @@ function CartPage() {
         {/* Items */}
         <div className="lg:col-span-2 space-y-4">
           {cart.map(item => (
-            <div key={`${item.id}|${item.chosenSize ?? ""}|${item.chosenColor ?? ""}`} className="bg-white rounded-2xl p-4 flex gap-4"
-              style={{ boxShadow: "0 4px 14px rgba(30,64,175,0.07)" }}>
+            <div key={`${item.id}|${item.chosenSize ?? ""}|${item.chosenColor ?? ""}`} className="bg-white rounded-sm p-4 flex gap-4 border border-gray-200">
               <ProductImage src={item.image} alt={item.name}
-                className="w-24 h-24 object-cover rounded-xl flex-shrink-0" />
+                className="w-24 h-24 object-cover rounded-sm flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <Link to={`/product/${item.id}`} className="font-bold text-[#111827] text-sm hover:text-[#1E40AF] line-clamp-2">{item.name}</Link>
                 <p className="text-xs text-[#6b7280] mt-0.5">{item.subcategory}</p>
@@ -2131,7 +2191,7 @@ function CartPage() {
                   </p>
                 )}
                 <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
-                  <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+                  <div className="flex items-center rounded-sm border border-gray-200 overflow-hidden">
                     <button onClick={() => updateQty(item.id, item.qty - 1, item.chosenSize, item.chosenColor)}
                       className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 transition-colors">
                       <Minus size={13} />
@@ -2154,7 +2214,7 @@ function CartPage() {
 
         {/* Summary */}
         <div>
-          <div className="bg-white rounded-2xl p-6 sticky top-24" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+          <div className="bg-white rounded-sm p-6 sticky top-24 border border-gray-200">
             <h3 className="font-bold text-[#111827] mb-5 text-lg">Order Summary</h3>
 
             <div className="space-y-3 mb-5">
@@ -2169,11 +2229,11 @@ function CartPage() {
             </div>
 
             <button onClick={() => navigate("/checkout")}
-              className="w-full py-3.5 rounded-xl bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 mb-3"
-              style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
+              className="w-full py-3.5 rounded-sm bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 mb-3"
+              >
               Proceed to Checkout
             </button>
-            <button onClick={() => navigate("/shop")} className="w-full py-3 rounded-xl border border-gray-200 text-[#374151] font-semibold text-sm hover:bg-gray-50 transition-colors">
+            <button onClick={() => navigate("/shop")} className="w-full py-3 rounded-sm border border-gray-200 text-[#374151] font-semibold text-sm hover:bg-gray-50 transition-colors">
               Continue Shopping
             </button>
           </div>
@@ -2313,7 +2373,7 @@ function CheckoutPage() {
 
   if (placedOrders) return (
     <div className="max-w-lg mx-auto px-4 py-16">
-      <div className="bg-white rounded-3xl p-6 sm:p-8" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
+      <div className="bg-white rounded-sm p-6 sm:p-8 border border-gray-200">
         <div className="text-center mb-5">
           <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
             <Clock size={38} className="text-amber-500" />
@@ -2328,29 +2388,29 @@ function CheckoutPage() {
 
         <div className="space-y-3 mb-4">
           {placedOrders.map(o => (
-            <div key={o.id} className="rounded-xl border border-gray-100 bg-[#F8F9FB] p-4 text-left">
+            <div key={o.id} className="rounded-sm border border-gray-100 bg-[#F8F9FB] p-4 text-left">
               <div className="flex items-center justify-between mb-1 gap-2">
                 <p className="font-bold text-[#111827] text-sm truncate">{o.sellerStore || "Ahmad Mart"}</p>
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex-shrink-0">{o.status}</span>
               </div>
               <p className="text-xs text-[#6b7280] mb-2">Order #{o.id} · {o.items.reduce((s, it) => s + it.qty, 0)} item(s) · <strong className="text-[#1E40AF]">{fmt(o.total)}</strong></p>
               <a href={whatsappOrderUrl(o)} target="_blank" rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-white font-bold text-sm transition-transform active:scale-95"
-                style={{ background: "#25D366", boxShadow: "0 4px 12px rgba(37,211,102,0.3)" }}>
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-sm text-white font-bold text-sm transition-transform active:scale-95"
+                style={{ background: "#25D366" }}>
                 <MessageCircle size={16} /> Send to {o.sellerStore || "Ahmad Mart"} on WhatsApp
               </a>
             </div>
           ))}
         </div>
 
-        <div className="rounded-xl border border-green-200 bg-green-50 p-3 mb-4 text-xs text-green-700 text-left">
+        <div className="rounded-sm border border-green-200 bg-green-50 p-3 mb-4 text-xs text-green-700 text-left">
           Send the WhatsApp message to each store to complete your payment with the seller. Your order becomes confirmed once the seller or admin approves it.
         </div>
 
-        <button onClick={() => navigate("/account")} className="w-full py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm mb-2" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
+        <button onClick={() => navigate("/account")} className="w-full py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm mb-2" >
           View My Orders
         </button>
-        <button onClick={() => navigate("/shop")} className="w-full py-3 border border-gray-200 text-[#374151] rounded-xl font-bold text-sm">
+        <button onClick={() => navigate("/shop")} className="w-full py-3 border border-gray-200 text-[#374151] rounded-sm font-bold text-sm">
           Continue Shopping
         </button>
       </div>
@@ -2362,9 +2422,9 @@ function CheckoutPage() {
       <User size={56} className="mx-auto text-gray-300 mb-4" />
       <h2 className="font-black text-xl text-[#111827] mb-2">Please sign in to checkout</h2>
       <p className="text-sm text-[#6b7280] mb-6">Your order is saved to your account so you can track its status and the admin can confirm it.</p>
-      <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm mr-3"
-        style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>Sign In</button>
-      <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-xl font-bold text-sm">Register</button>
+      <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm mr-3"
+        >Sign In</button>
+      <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-sm font-bold text-sm">Register</button>
     </div>
   );
 
@@ -2372,7 +2432,7 @@ function CheckoutPage() {
     <div className="max-w-7xl mx-auto px-4 py-20 text-center">
       <ShoppingCart size={64} className="mx-auto text-gray-300 mb-4" />
       <p className="font-bold text-[#111827] mb-4">Your cart is empty</p>
-      <button onClick={() => navigate("/shop")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Shop Now</button>
+      <button onClick={() => navigate("/shop")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm">Shop Now</button>
     </div>
   );
 
@@ -2381,7 +2441,7 @@ function CheckoutPage() {
       <label className="text-sm font-semibold text-[#374151] mb-1.5 block">{label}</label>
       <input type={type} value={form[name]} onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}
         placeholder={placeholder}
-        className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-colors ${errors[name] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
+        className={`w-full px-4 py-3 rounded-sm border text-sm outline-none transition-colors ${errors[name] ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
       {errors[name] && <p className="text-xs text-red-500 mt-1">{errors[name]}</p>}
     </div>
   );
@@ -2392,7 +2452,7 @@ function CheckoutPage() {
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* Customer details */}
-          <div className="bg-white rounded-2xl p-6" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+          <div className="bg-white rounded-sm p-6 border border-gray-200">
             <h3 className="font-bold text-[#111827] mb-5 flex items-center gap-2"><MapPin size={18} className="text-[#F97316]" /> Customer Details</h3>
             <div className="space-y-4">
               {field("name", "Full Name", "text", "Enter your full name")}
@@ -2403,7 +2463,7 @@ function CheckoutPage() {
                 <textarea value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
                   placeholder="House no., street, area, city, province, postal code"
                   rows={3}
-                  className={`w-full px-4 py-3 rounded-xl border text-sm outline-none transition-colors resize-none ${errors.address ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
+                  className={`w-full px-4 py-3 rounded-sm border text-sm outline-none transition-colors resize-none ${errors.address ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
                 {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
               </div>
               <div>
@@ -2411,18 +2471,18 @@ function CheckoutPage() {
                 <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   placeholder="Any special instructions..."
                   rows={2}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF] resize-none" />
+                  className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF] resize-none" />
               </div>
             </div>
           </div>
 
           {/* Payment method selector */}
-          <div className="bg-white rounded-2xl p-6" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+          <div className="bg-white rounded-sm p-6 border border-gray-200">
             <h3 className="font-bold text-[#111827] mb-4 flex items-center gap-2"><Tag size={18} className="text-[#F97316]" /> Delivery & Payment</h3>
             <div className="grid sm:grid-cols-2 gap-3">
               {walletAllowed && (
                 <button type="button" onClick={() => setPayment("wallet")}
-                  className={`text-left rounded-xl border-2 p-4 transition-all ${!isCOD ? "border-[#1E40AF] bg-blue-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
+                  className={`text-left rounded-sm border-2 p-4 transition-all ${!isCOD ? "border-[#1E40AF] bg-blue-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="flex items-center gap-2 font-bold text-[#111827] text-sm"><Smartphone size={16} className="text-[#1E40AF]" /> {walletLabel}</span>
                     <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${!isCOD ? "border-[#1E40AF] bg-[#1E40AF]" : "border-gray-300"}`} />
@@ -2432,7 +2492,7 @@ function CheckoutPage() {
               )}
               {codAllowed && (
                 <button type="button" onClick={() => { setPayment("cod"); setPromoMsg(""); }}
-                  className={`text-left rounded-xl border-2 p-4 transition-all ${isCOD ? "border-[#059669] bg-emerald-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
+                  className={`text-left rounded-sm border-2 p-4 transition-all ${isCOD ? "border-[#059669] bg-emerald-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="flex items-center gap-2 font-bold text-[#111827] text-sm"><Truck size={16} className="text-[#059669]" /> Cash on Delivery</span>
                     <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isCOD ? "border-[#059669] bg-[#059669]" : "border-gray-300"}`} />
@@ -2450,9 +2510,9 @@ function CheckoutPage() {
           </div>
 
           {/* Method details */}
-          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
-            <div className="px-6 py-4 flex items-center gap-3" style={{ background: isCOD ? "linear-gradient(135deg, #059669, #047857)" : "linear-gradient(135deg, #1E40AF, #1e3a8a)" }}>
-              <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center">
+          <div className="bg-white rounded-sm overflow-hidden border border-gray-200">
+            <div className="px-6 py-4 flex items-center gap-3" style={{ background: isCOD ? "#059669" : "#1E40AF" }}>
+              <div className="w-10 h-10 rounded-sm bg-white/15 flex items-center justify-center">
                 {isCOD ? <Truck size={20} className="text-white" /> : <Smartphone size={20} className="text-white" />}
               </div>
               <div>
@@ -2461,7 +2521,7 @@ function CheckoutPage() {
               </div>
             </div>
             <div className="p-6">
-              <div className={`rounded-xl border p-4 mb-4 ${isCOD ? "border-emerald-100 bg-emerald-50/60" : "border-blue-100 bg-blue-50/60"}`}>
+              <div className={`rounded-sm border p-4 mb-4 ${isCOD ? "border-emerald-100 bg-emerald-50/60" : "border-blue-100 bg-blue-50/60"}`}>
                 <p className={`font-bold text-sm mb-3 ${isCOD ? "text-[#065F46]" : "text-[#1E40AF]"}`}>How it works</p>
                 <ol className="space-y-2.5">
                   {(isCOD
@@ -2495,19 +2555,19 @@ function CheckoutPage() {
 
         {/* Order Summary */}
         <div>
-          <div className="bg-white rounded-2xl p-6 sticky top-24" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.08)" }}>
+          <div className="bg-white rounded-sm p-6 sticky top-24 border border-gray-200">
             <h3 className="font-bold text-[#111827] mb-4">Order Summary</h3>
             {groups.length > 1 && <p className="text-xs text-[#6b7280] -mt-2 mb-3">Your cart has items from {groups.length} stores — a separate order is created for each.</p>}
             <div className="space-y-4 mb-4 max-h-60 overflow-y-auto">
               {groups.map((g, gi) => {
                 const { subtotal, groupShipping, groupTotal } = groupTotals(g);
                 return (
-                  <div key={gi} className="rounded-xl bg-[#F8F9FB] p-3">
+                  <div key={gi} className="rounded-sm bg-[#F8F9FB] p-3">
                     <p className="text-xs font-bold text-[#111827] mb-2 flex items-center gap-1.5"><User size={12} className="text-[#1E40AF]" /> {g.sellerStore || "Ahmad Mart"}</p>
                     <div className="space-y-2">
                       {g.items.map(item => (
                         <div key={`${item.id}|${item.chosenSize ?? ""}|${item.chosenColor ?? ""}`} className="flex gap-2 items-center">
-                          <ProductImage src={item.image} alt={item.name} className="w-9 h-9 object-cover rounded-lg flex-shrink-0" />
+                          <ProductImage src={item.image} alt={item.name} className="w-9 h-9 object-cover rounded-sm flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold text-[#111827] line-clamp-1">{item.name}</p>
                             <p className="text-[11px] text-[#6b7280]">Qty: {item.qty}{item.chosenSize ? ` · Size: ${item.chosenSize}` : ""}{item.chosenColor ? ` · ${item.chosenColor}` : ""}</p>
@@ -2531,8 +2591,8 @@ function CheckoutPage() {
               <div className="flex justify-between font-black text-[#111827] text-base border-t border-gray-100 pt-2"><span>Total</span><span className="text-[#1E40AF]">{fmt(grandTotal)}</span></div>
             </div>
             <button onClick={handleSubmit} disabled={submitting || (!walletAllowed && !codAllowed)}
-              className="w-full py-3.5 rounded-xl text-white font-black text-sm transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
-              style={{ background: "#25D366", boxShadow: "0 4px 16px rgba(37,211,102,0.35)" }}>
+              className="w-full py-3.5 rounded-sm text-white font-black text-sm transition-transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
+              style={{ background: "#25D366" }}>
               <MessageCircle size={18} /> {submitting ? "Placing order…" : `${isCOD ? "Place COD Order on WhatsApp" : "Pay via WhatsApp"} — ${fmt(grandTotal)}`}
             </button>
             {submitErr && <p className="text-xs text-red-500 font-semibold text-center mt-2">{submitErr}</p>}
@@ -2555,11 +2615,11 @@ function WishlistPage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl sm:text-3xl font-black text-[#111827] mb-6">My Wishlist</h1>
       {wishlist.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-2xl" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <div className="text-center py-20 bg-white rounded-sm border border-gray-200">
           <Heart size={64} className="mx-auto text-gray-300 mb-4" />
           <p className="font-bold text-[#111827] mb-2">Your wishlist is empty</p>
           <p className="text-[#6b7280] text-sm">Save products you love by clicking the heart icon</p>
-          <Link to="/shop" className="inline-block mt-5 px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Browse Products</Link>
+          <Link to="/shop" className="inline-block mt-5 px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm">Browse Products</Link>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -2600,20 +2660,20 @@ function LoginPage() {
           <h1 className="text-2xl font-black text-[#111827]">Welcome Back</h1>
           <p className="text-[#6b7280] text-sm mt-1">Sign in to your Ahmad Mart account</p>
         </div>
-        <div className="bg-white rounded-2xl p-8" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.1)" }}>
+        <div className="bg-white rounded-sm p-8 border border-gray-200">
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Email Address</label>
               <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 placeholder="you@example.com" required
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+                className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
             </div>
             <div>
               <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Password</label>
               <div className="relative">
                 <input type={showPw ? "text" : "password"} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   placeholder="Enter your password" required
-                  className="w-full px-4 py-3 pr-11 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+                  className="w-full px-4 py-3 pr-11 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
                 <button type="button" onClick={() => setShowPw(s => !s)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -2628,8 +2688,8 @@ function LoginPage() {
               <a href="#" className="text-xs text-[#1E40AF] font-semibold hover:text-[#F97316]">Forgot password?</a>
             </div>
             <button type="submit" disabled={busy}
-              className="w-full py-3.5 rounded-xl bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
-              style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
+              className="w-full py-3.5 rounded-sm bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
+              >
               {busy ? "Signing in…" : "Sign In"}
             </button>
           </form>
@@ -2683,7 +2743,7 @@ function RegisterPage() {
           <h1 className="text-2xl font-black text-[#111827]">Create Account</h1>
           <p className="text-[#6b7280] text-sm mt-1">Join Ahmad Mart for exclusive deals</p>
         </div>
-        <div className="bg-white rounded-2xl p-8" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.1)" }}>
+        <div className="bg-white rounded-sm p-8 border border-gray-200">
           <form onSubmit={handleRegister} className="space-y-4">
             {[
               { key: "name", label: "Full Name", type: "text", placeholder: "Your full name" },
@@ -2694,7 +2754,7 @@ function RegisterPage() {
                 <label className="text-sm font-semibold text-[#374151] mb-1.5 block">{label}</label>
                 <input type={type} value={form[key as keyof typeof form]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                   placeholder={placeholder}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+                  className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
               </div>
             ))}
             <div>
@@ -2702,7 +2762,7 @@ function RegisterPage() {
               <div className="relative">
                 <input type={showPw ? "text" : "password"} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   placeholder="Min. 6 characters"
-                  className="w-full px-4 py-3 pr-11 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+                  className="w-full px-4 py-3 pr-11 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
                 <button type="button" onClick={() => setShowPw(s => !s)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                   {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -2713,7 +2773,7 @@ function RegisterPage() {
               <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Confirm Password</label>
               <input type="password" value={form.confirm} onChange={e => setForm(f => ({ ...f, confirm: e.target.value }))}
                 placeholder="Repeat your password"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+                className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
             </div>
             <div>
               <label className="text-sm font-semibold text-[#374151] mb-1.5 block">I want to join as</label>
@@ -2723,7 +2783,7 @@ function RegisterPage() {
                   { v: "seller", t: "Seller", d: "List and sell products" },
                 ] as const).map(o => (
                   <button key={o.v} type="button" onClick={() => setForm(f => ({ ...f, role: o.v }))}
-                    className={`text-left rounded-xl border-2 p-3 transition-all ${form.role === o.v ? "border-[#1E40AF] bg-blue-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
+                    className={`text-left rounded-sm border-2 p-3 transition-all ${form.role === o.v ? "border-[#1E40AF] bg-blue-50/60" : "border-gray-200 bg-gray-50 hover:border-gray-300"}`}>
                     <span className="flex items-center justify-between mb-0.5">
                       <span className="font-bold text-[#111827] text-sm">{o.t}</span>
                       <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${form.role === o.v ? "border-[#1E40AF] bg-[#1E40AF]" : "border-gray-300"}`} />
@@ -2736,32 +2796,32 @@ function RegisterPage() {
             </div>
 
             {form.role === "seller" && (
-              <div className="space-y-3 rounded-xl bg-[#F8F9FB] border border-gray-100 p-4">
+              <div className="space-y-3 rounded-sm bg-[#F8F9FB] border border-gray-100 p-4">
                 <p className="text-sm font-bold text-[#111827]">Store details</p>
                 <div>
                   <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Store Name *</label>
                   <input type="text" value={form.storeName} onChange={e => setForm(f => ({ ...f, storeName: e.target.value }))}
                     placeholder="e.g. Bilal Electronics"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
+                    className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Store WhatsApp Number *</label>
                   <input type="tel" value={form.whatsapp} onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))}
                     placeholder="03001234567"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
+                    className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
                   <p className="text-[11px] text-[#6b7280] mt-1">Buyers check out and contact you on this number.</p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-[#374151] mb-1.5 block">City *</label>
                   <input type="text" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))}
                     placeholder="e.g. Multan"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
+                    className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
                   <p className="text-[11px] text-[#6b7280] mt-1">The city your store ships from.</p>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Payment Method</label>
                   <select value={form.accountType} onChange={e => setForm(f => ({ ...f, accountType: e.target.value as AccountType }))}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]">
+                    className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]">
                     {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <p className="text-[11px] text-[#6b7280] mt-1">Buyers send your payment to this account on WhatsApp.</p>
@@ -2771,19 +2831,19 @@ function RegisterPage() {
                     <label className="text-sm font-semibold text-[#374151] mb-1.5 block">{form.accountType} Number</label>
                     <input type="tel" value={form.accountNumber} onChange={e => setForm(f => ({ ...f, accountNumber: e.target.value }))}
                       placeholder="03001234567"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
+                      className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
                   </div>
                   <div>
                     <label className="text-sm font-semibold text-[#374151] mb-1.5 block">{form.accountType} Title</label>
                     <input type="text" value={form.accountTitle} onChange={e => setForm(f => ({ ...f, accountTitle: e.target.value }))}
                       placeholder="Account holder name"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
+                      className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
                   </div>
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-[#374151] mb-1.5 block">Checkout options for buyers</label>
                   <select value={form.paymentMethods} onChange={e => setForm(f => ({ ...f, paymentMethods: e.target.value as PaymentMethods }))}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]">
+                    className="w-full px-4 py-3 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]">
                     <option value="both">Online payment + Cash on Delivery (both)</option>
                     <option value="online">Online payment only</option>
                     <option value="cod">Cash on Delivery only</option>
@@ -2794,8 +2854,8 @@ function RegisterPage() {
             )}
             {err && <p className="text-xs text-red-500 font-semibold">{err}</p>}
             <button type="submit" disabled={busy}
-              className="w-full py-3.5 rounded-xl bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
-              style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
+              className="w-full py-3.5 rounded-sm bg-[#1E40AF] text-white font-black text-sm hover:bg-[#1e3a8a] transition-all active:scale-95 disabled:opacity-60"
+              >
               {busy ? "Creating account…" : "Create Account"}
             </button>
           </form>
@@ -2836,11 +2896,11 @@ function AccountPage() {
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
         <User size={64} className="mx-auto text-gray-300 mb-4" />
         <p className="font-bold text-[#111827] mb-4">Please sign in to view your account</p>
-        <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm mr-3"
-          style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.3)" }}>
+        <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm mr-3"
+          >
           Sign In
         </button>
-        <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-xl font-bold text-sm">
+        <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-sm font-bold text-sm">
           Register
         </button>
       </div>
@@ -2864,8 +2924,7 @@ function AccountPage() {
           { label: "Wishlist Items", value: wishlist.length, icon: Heart, color: "#F97316" },
           { label: "Cart Items", value: cart.length, icon: ShoppingCart, color: "#059669" },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-white rounded-2xl p-5 text-center"
-            style={{ boxShadow: "0 4px 14px rgba(30,64,175,0.07)" }}>
+          <div key={label} className="bg-white rounded-sm p-5 text-center border border-gray-200">
             <Icon size={22} className="mx-auto mb-2" style={{ color }} />
             <p className="text-2xl font-black" style={{ color }}>{value}</p>
             <p className="text-xs text-[#6b7280] mt-0.5">{label}</p>
@@ -2876,10 +2935,10 @@ function AccountPage() {
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Sidebar */}
         <div className="lg:w-56 flex-shrink-0">
-          <div className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 4px 14px rgba(30,64,175,0.07)" }}>
+          <div className="bg-white rounded-sm p-4 border border-gray-200">
             <div className="text-center mb-4 pb-4 border-b border-gray-100">
               <div className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center font-black text-xl text-white"
-                style={{ background: "linear-gradient(135deg, #1E40AF, #F97316)" }}>
+                style={{ background: "#1E40AF" }}>
                 {user.name.charAt(0)}
               </div>
               <p className="font-bold text-[#111827] text-sm">{user.name}</p>
@@ -2888,15 +2947,15 @@ function AccountPage() {
             <div className="space-y-1">
               {tabs.map(({ key, label, icon: Icon }) => (
                 <button key={key} onClick={() => setTab(key as any)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${tab === key ? "bg-[#1E40AF] text-white" : "text-[#374151] hover:bg-gray-100"}`}>
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm font-semibold transition-colors ${tab === key ? "bg-[#1E40AF] text-white" : "text-[#374151] hover:bg-gray-100"}`}>
                   <Icon size={15} /> {label}
                 </button>
               ))}
-              <Link to="/messages" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-[#374151] hover:bg-gray-100 transition-colors">
+              <Link to="/messages" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm font-semibold text-[#374151] hover:bg-gray-100 transition-colors">
                 <MessageCircle size={15} /> Messages
               </Link>
               <button onClick={() => { logout(); navigate("/"); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors">
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm font-semibold text-red-500 hover:bg-red-50 transition-colors">
                 <X size={15} /> Sign Out
               </button>
             </div>
@@ -2906,7 +2965,7 @@ function AccountPage() {
         {/* Content */}
         <div className="flex-1">
           {tab === "profile" && (
-            <div className="bg-white rounded-2xl p-6" style={{ boxShadow: "0 4px 14px rgba(30,64,175,0.07)" }}>
+            <div className="bg-white rounded-sm p-6 border border-gray-200">
               <h3 className="font-bold text-[#111827] mb-5">Profile Information</h3>
               <div className="space-y-4 max-w-md">
                 {[
@@ -2915,26 +2974,26 @@ function AccountPage() {
                 ].map(({ label, value }) => (
                   <div key={label}>
                     <label className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1 block">{label}</label>
-                    <div className="px-4 py-3 rounded-xl bg-[#F8F9FB] text-sm font-semibold text-[#111827]">{value}</div>
+                    <div className="px-4 py-3 rounded-sm bg-[#F8F9FB] text-sm font-semibold text-[#111827]">{value}</div>
                   </div>
                 ))}
                 <div>
                   <label className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1 block">Account Type</label>
-                  <div className="px-4 py-3 rounded-xl bg-[#F8F9FB] text-sm font-semibold text-[#111827] capitalize flex items-center gap-2">
+                  <div className="px-4 py-3 rounded-sm bg-[#F8F9FB] text-sm font-semibold text-[#111827] capitalize flex items-center gap-2">
                     {user.role}
                     {user.role === "admin" && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1E40AF] text-white uppercase tracking-wide">Admin</span>}
                   </div>
                 </div>
 
                 {user.role === "admin" && (
-                  <Link to="/admin" className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm"
-                    style={{ boxShadow: "0 4px 12px rgba(30,64,175,0.3)" }}>
+                  <Link to="/admin" className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm"
+                    >
                     <ShieldCheck size={16} /> Go to Admin Dashboard
                   </Link>
                 )}
                 {user.role === "seller" && (
-                  <Link to="/seller" className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm"
-                    style={{ boxShadow: "0 4px 12px rgba(30,64,175,0.3)" }}>
+                  <Link to="/seller" className="inline-flex items-center gap-2 px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm"
+                    >
                     <Package size={16} /> Go to Seller Dashboard
                   </Link>
                 )}
@@ -2944,7 +3003,7 @@ function AccountPage() {
                     <div className="grid grid-cols-2 gap-3">
                       {(["buyer", "seller"] as const).map(r => (
                         <button key={r} type="button" onClick={() => switchRole(r)} disabled={roleBusy || user.role === r}
-                          className={`rounded-xl border-2 p-3 text-sm font-bold capitalize transition-all disabled:cursor-default ${user.role === r ? "border-[#1E40AF] bg-blue-50/60 text-[#1E40AF]" : "border-gray-200 text-[#374151] hover:border-gray-300"}`}>
+                          className={`rounded-sm border-2 p-3 text-sm font-bold capitalize transition-all disabled:cursor-default ${user.role === r ? "border-[#1E40AF] bg-blue-50/60 text-[#1E40AF]" : "border-gray-200 text-[#374151] hover:border-gray-300"}`}>
                           {r}{user.role === r && " · current"}
                         </button>
                       ))}
@@ -2959,19 +3018,19 @@ function AccountPage() {
           )}
 
           {tab === "orders" && (
-            <div className="bg-white rounded-2xl p-6" style={{ boxShadow: "0 4px 14px rgba(30,64,175,0.07)" }}>
+            <div className="bg-white rounded-sm p-6 border border-gray-200">
               <h3 className="font-bold text-[#111827] mb-5">Order History</h3>
               {myOrders.length === 0 ? (
                 <div className="text-center py-10">
                   <Package size={44} className="mx-auto text-gray-300 mb-3" />
                   <p className="font-bold text-[#111827] text-sm mb-1">No orders yet</p>
                   <p className="text-xs text-[#6b7280] mb-4">Your orders will appear here once you place them.</p>
-                  <Link to="/shop" className="inline-block px-5 py-2.5 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Start Shopping</Link>
+                  <Link to="/shop" className="inline-block px-5 py-2.5 bg-[#1E40AF] text-white rounded-sm font-bold text-sm">Start Shopping</Link>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {myOrders.map(o => (
-                    <div key={o.id} className="p-4 rounded-xl bg-[#F8F9FB]">
+                    <div key={o.id} className="p-4 rounded-sm bg-[#F8F9FB]">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-bold text-[#1E40AF] text-sm">#{o.id}</p>
@@ -2985,7 +3044,7 @@ function AccountPage() {
                             </span>
                           </div>
                           <button onClick={() => removeOrder(o)} title="Remove from my history"
-                            className="w-7 h-7 grid place-items-center rounded-lg text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
+                            className="w-7 h-7 grid place-items-center rounded-sm text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -3003,10 +3062,10 @@ function AccountPage() {
           {tab === "wishlist" && (
             <div>
               {wishlist.length === 0 ? (
-                <div className="bg-white rounded-2xl p-12 text-center" style={{ boxShadow: "0 4px 14px rgba(30,64,175,0.07)" }}>
+                <div className="bg-white rounded-sm p-12 text-center border border-gray-200">
                   <Heart size={48} className="mx-auto text-gray-300 mb-3" />
                   <p className="font-bold text-[#111827]">No wishlist items yet</p>
-                  <Link to="/shop" className="inline-block mt-4 px-5 py-2.5 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Browse Products</Link>
+                  <Link to="/shop" className="inline-block mt-4 px-5 py-2.5 bg-[#1E40AF] text-white rounded-sm font-bold text-sm">Browse Products</Link>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -3056,8 +3115,8 @@ function MessagesPage() {
     <div className="max-w-md mx-auto px-4 py-20 text-center">
       <MessageCircle size={56} className="mx-auto text-gray-300 mb-4" />
       <h2 className="font-black text-xl text-[#111827] mb-2">Sign in to view your messages</h2>
-      <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm mr-3">Sign In</button>
-      <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-xl font-bold text-sm">Register</button>
+      <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm mr-3">Sign In</button>
+      <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-sm font-bold text-sm">Register</button>
     </div>
   );
 
@@ -3066,17 +3125,17 @@ function MessagesPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl sm:text-3xl font-black text-[#111827] mb-5 flex items-center gap-2"><MessageCircle size={24} className="text-[#1E40AF]" /> Messages</h1>
-      {err && <div className="mb-4 rounded-xl bg-red-50 text-red-600 p-3 text-sm font-semibold">{err}</div>}
+      {err && <div className="mb-4 rounded-sm bg-red-50 text-red-600 p-3 text-sm font-semibold">{err}</div>}
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Conversation list */}
         <div className={`lg:col-span-1 ${active ? "hidden lg:block" : "block"}`}>
-          <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+          <div className="bg-white rounded-sm overflow-hidden border border-gray-200">
             {conversations.length === 0 ? (
               <div className="p-8 text-center text-sm text-[#6b7280]">No conversations yet. Ask a seller a question from any product page.</div>
             ) : conversations.map(c => (
               <button key={`${c.productId}-${c.buyerId}-${c.sellerId}`} onClick={() => openThread(c)}
                 className={`w-full text-left flex items-center gap-3 p-3 border-b border-gray-100 last:border-0 transition-colors ${active && active.productId === c.productId && active.buyerId === c.buyerId && active.sellerId === c.sellerId ? "bg-blue-50/60" : "hover:bg-gray-50"}`}>
-                <ProductImage src={c.productImage} alt="" className="w-10 h-10 rounded-lg object-cover bg-gray-50 flex-shrink-0" />
+                <ProductImage src={c.productImage} alt="" className="w-10 h-10 rounded-sm object-cover bg-gray-50 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-[#111827] truncate">{other(c)}</p>
                   <p className="text-xs text-[#6b7280] truncate">{c.productName}: {c.lastBody}</p>
@@ -3090,14 +3149,14 @@ function MessagesPage() {
         {/* Active thread */}
         <div className={`lg:col-span-2 ${active ? "block" : "hidden lg:block"}`}>
           {!active ? (
-            <div className="bg-white rounded-2xl p-12 text-center text-sm text-[#6b7280] h-full flex items-center justify-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+            <div className="bg-white rounded-sm p-12 text-center text-sm text-[#6b7280] h-full flex items-center justify-center border border-gray-200">
               Select a conversation to read and reply.
             </div>
           ) : (
-            <div className="bg-white rounded-2xl flex flex-col" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)", height: "70vh" }}>
+            <div className="bg-white rounded-sm flex flex-col border border-gray-200" style={{ height: "70vh" }}>
               <div className="flex items-center gap-2 p-4 border-b border-gray-100">
                 <button onClick={() => setActive(null)} className="lg:hidden text-[#1E40AF]"><ChevronLeft size={20} /></button>
-                <ProductImage src={active.productImage} alt="" className="w-9 h-9 rounded-lg object-cover bg-gray-50" />
+                <ProductImage src={active.productImage} alt="" className="w-9 h-9 rounded-sm object-cover bg-gray-50" />
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-[#111827] truncate">{other(active)}</p>
                   <Link to={`/product/${active.productId}`} className="text-xs text-[#6b7280] truncate hover:text-[#1E40AF]">About: {active.productName}</Link>
@@ -3106,7 +3165,7 @@ function MessagesPage() {
               <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
                 {messages.map(m => (
                   <div key={m.id} className={`flex ${m.senderId === user.id ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[75%] px-3.5 py-2 rounded-2xl text-sm ${m.senderId === user.id ? "bg-[#1E40AF] text-white rounded-br-sm" : "bg-[#F1F5F9] text-[#111827] rounded-bl-sm"}`}>
+                    <div className={`max-w-[75%] px-3.5 py-2 rounded-sm text-sm ${m.senderId === user.id ? "bg-[#1E40AF] text-white rounded-br-sm" : "bg-[#F1F5F9] text-[#111827] rounded-bl-sm"}`}>
                       {m.body}
                       <span className={`block text-[10px] mt-0.5 ${m.senderId === user.id ? "text-blue-200" : "text-[#9ca3af]"}`}>{new Date(m.createdAt).toLocaleString()}</span>
                     </div>
@@ -3117,9 +3176,9 @@ function MessagesPage() {
               <div className="p-3 border-t border-gray-100 flex gap-2">
                 <input value={body} onChange={e => setBody(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
                   placeholder="Type a message…"
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+                  className="flex-1 px-4 py-2.5 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
                 <button onClick={send} disabled={busy || !body.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-60">
+                  className="px-4 py-2.5 rounded-sm bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-60">
                   <Send size={15} /> Send
                 </button>
               </div>
@@ -3150,11 +3209,11 @@ function OrderCard({ order: o, onSetStatus }: {
 }) {
   const approve = () => onSetStatus(o.id, isCashOnDelivery(o) ? "Confirmed (COD)" : "Payment Received");
   return (
-    <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+    <div className="bg-white rounded-sm p-5 border border-gray-200">
       <div className="flex flex-col lg:flex-row gap-5">
         {/* Verify payment proof on WhatsApp */}
         <a href={`https://wa.me/${toWaNumber(o.phone)}`} target="_blank" rel="noopener noreferrer"
-          className="w-full lg:w-44 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-green-200 bg-green-50 p-4 text-center hover:bg-green-100 transition-colors flex-shrink-0 min-h-[130px]">
+          className="w-full lg:w-44 flex flex-col items-center justify-center gap-2 rounded-sm border-2 border-green-200 bg-green-50 p-4 text-center hover:bg-green-100 transition-colors flex-shrink-0 min-h-[130px]">
           <MessageCircle size={28} className="text-green-600" />
           <p className="text-xs font-bold text-green-800">{isCashOnDelivery(o) ? "Confirm Cash on Delivery order on WhatsApp" : "Verify payment proof on WhatsApp"}</p>
           <span className="text-[11px] font-semibold text-green-600 underline">Open chat with {o.name.split(" ")[0]}</span>
@@ -3180,7 +3239,7 @@ function OrderCard({ order: o, onSetStatus }: {
             {o.notes && <p className="sm:col-span-2"><span className="text-[#6b7280]">Notes:</span> <span className="text-[#374151]">{o.notes}</span></p>}
           </div>
 
-          <div className="rounded-xl bg-[#F8F9FB] p-3 mb-3">
+          <div className="rounded-sm bg-[#F8F9FB] p-3 mb-3">
             <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide mb-1.5">Products</p>
             <div className="space-y-1">
               {o.items.map(it => (
@@ -3194,7 +3253,7 @@ function OrderCard({ order: o, onSetStatus }: {
 
           {o.status === "Pending Approval" && (
             <button onClick={approve}
-              className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#059669] text-white text-xs font-black hover:bg-[#047857] transition-colors">
+              className="mb-3 inline-flex items-center gap-2 px-4 py-2 rounded-sm bg-[#059669] text-white text-xs font-black hover:bg-[#047857] transition-colors">
               <CheckCircle size={14} /> Approve order → {isCashOnDelivery(o) ? "Confirmed (COD)" : "Payment Received"}
             </button>
           )}
@@ -3203,7 +3262,7 @@ function OrderCard({ order: o, onSetStatus }: {
             <span className="text-xs font-bold text-[#6b7280]">Update status:</span>
             {ORDER_STATUSES.map(s => (
               <button key={s} onClick={() => onSetStatus(o.id, s)}
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${o.status === s ? "" : "bg-gray-100 text-[#374151] hover:bg-gray-200"}`}
+                className={`text-xs font-bold px-3 py-1.5 rounded-sm transition-colors ${o.status === s ? "" : "bg-gray-100 text-[#374151] hover:bg-gray-200"}`}
                 style={o.status === s ? { background: STATUS_STYLE[s].bg, color: STATUS_STYLE[s].text, outline: `1.5px solid ${STATUS_STYLE[s].text}` } : undefined}>
                 {s}
               </button>
@@ -3223,9 +3282,9 @@ function AdminAnalytics({ dbMode }: { dbMode: boolean }) {
     if (!dbMode) return;
     fetchAnalytics().then(setData).catch(e => setErr(e.message || "Failed to load analytics"));
   }, [dbMode]);
-  if (!dbMode) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-[#6b7280]" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>Connect the database (and log in with the admin password) to see analytics.</div>;
-  if (err) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-red-500" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>{err}</div>;
-  if (!data) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-[#6b7280]">Loading analytics…</div>;
+  if (!dbMode) return <div className="bg-white rounded-sm p-8 text-center text-sm text-[#6b7280] border border-gray-200">Connect the database (and log in with the admin password) to see analytics.</div>;
+  if (err) return <div className="bg-white rounded-sm p-8 text-center text-sm text-red-500 border border-gray-200">{err}</div>;
+  if (!data) return <div className="bg-white rounded-sm p-8 text-center text-sm text-[#6b7280]">Loading analytics…</div>;
   const t = data.totals;
   const cards = [
     { label: "Total Products", value: t.total },
@@ -3240,13 +3299,13 @@ function AdminAnalytics({ dbMode }: { dbMode: boolean }) {
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {cards.map(c => (
-          <div key={c.label} className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+          <div key={c.label} className="bg-white rounded-sm p-4 border border-gray-200">
             <p className="text-2xl font-black text-[#1E40AF]">{c.value}</p>
             <p className="text-xs font-semibold text-[#6b7280] mt-0.5">{c.label}</p>
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="bg-white rounded-sm p-5 border border-gray-200">
         <p className="font-bold text-[#111827] mb-3">Products by Category</p>
         <div className="space-y-2">
           {data.byCategory.map(c => (
@@ -3257,7 +3316,7 @@ function AdminAnalytics({ dbMode }: { dbMode: boolean }) {
           ))}
         </div>
       </div>
-      <div className="bg-white rounded-2xl p-5" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="bg-white rounded-sm p-5 border border-gray-200">
         <p className="font-bold text-[#111827] mb-3">Products by Sub-Category</p>
         <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2">
           {data.bySubcategory.map(c => (
@@ -3311,7 +3370,7 @@ function ProductImage({ src, alt = "", className = "", style }: { src?: string; 
 function ImageThumb({ url, main }: { url: string; main?: boolean }) {
   const size = main ? "w-20 h-20" : "w-16 h-16";
   return (
-    <div className={`shrink-0 ${size} rounded-xl border ${main ? "border-[#1E40AF]/40" : "border-gray-200"} bg-gray-50 overflow-hidden relative`}>
+    <div className={`shrink-0 ${size} rounded-sm border ${main ? "border-[#1E40AF]/40" : "border-gray-200"} bg-gray-50 overflow-hidden relative`}>
       <ProductImage src={url} className="w-full h-full object-cover" />
       {main && <span className="absolute bottom-0 inset-x-0 bg-[#1E40AF] text-white text-[9px] font-bold text-center py-0.5 leading-tight z-10">MAIN</span>}
     </div>
@@ -3338,9 +3397,9 @@ function TagInput({ label, values, onChange, placeholder }: {
   return (
     <div className="text-sm">
       <span className="font-semibold text-[#374151] block mb-1">{label}</span>
-      <div className="w-full px-2 py-1.5 rounded-xl border border-gray-200 bg-gray-50 focus-within:border-[#1E40AF] flex flex-wrap items-center gap-1.5">
+      <div className="w-full px-2 py-1.5 rounded-sm border border-gray-200 bg-gray-50 focus-within:border-[#1E40AF] flex flex-wrap items-center gap-1.5">
         {values.map(v => (
-          <span key={v} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-[#EFF6FF] text-[#1E40AF] text-xs font-bold">
+          <span key={v} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-sm bg-[#EFF6FF] text-[#1E40AF] text-xs font-bold">
             {v}
             <button type="button" onClick={() => onChange(values.filter(x => x !== v))} title={`Remove ${v}`}
               className="w-4 h-4 grid place-items-center rounded hover:bg-[#1E40AF]/10">
@@ -3493,9 +3552,9 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
       reviews: initial?.reviews ?? 0,
     });
   };
-  const inp = "w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]";
+  const inp = "w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]";
   return (
-    <div className="bg-white rounded-2xl p-5 mb-5" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
+    <div className="bg-white rounded-sm p-5 mb-5 border border-gray-200">
       <p className="font-bold text-[#111827] mb-1">{initial ? `Edit: ${initial.name}` : "Add New Product"}</p>
       {/* When the admin opens a seller's product, say whose it is — most often the
           admin is here to correct the category/sub-category the seller picked. */}
@@ -3511,7 +3570,7 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
               <input className={inp} autoFocus value={f.category} onChange={e => set("category", e.target.value)} placeholder="Type new category name" />
               {allCategories.length > 0 && (
                 <button type="button" title="Pick from existing categories instead" onClick={() => { setAddingCategory(false); set("category", allCategories[0]); setAddingSubcategory(subcategoriesForCategory(allCategories[0]).length === 0); set("subcategory", ""); }}
-                  className="shrink-0 w-9 h-9 grid place-items-center rounded-xl border border-gray-200 text-[#6b7280] hover:bg-gray-50 transition-colors">
+                  className="shrink-0 w-9 h-9 grid place-items-center rounded-sm border border-gray-200 text-[#6b7280] hover:bg-gray-50 transition-colors">
                   <X size={16} />
                 </button>
               )}
@@ -3530,7 +3589,7 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
               <input className={inp} autoFocus value={f.subcategory} onChange={e => set("subcategory", e.target.value)} placeholder="Type new sub-category name" />
               {subcategoriesForCategory(f.category).length > 0 && (
                 <button type="button" title="Pick from existing sub-categories instead" onClick={() => { const subs = subcategoriesForCategory(f.category); setAddingSubcategory(false); set("subcategory", subs[0]); }}
-                  className="shrink-0 w-9 h-9 grid place-items-center rounded-xl border border-gray-200 text-[#6b7280] hover:bg-gray-50 transition-colors">
+                  className="shrink-0 w-9 h-9 grid place-items-center rounded-sm border border-gray-200 text-[#6b7280] hover:bg-gray-50 transition-colors">
                   <X size={16} />
                 </button>
               )}
@@ -3572,14 +3631,14 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
                     placeholder={i === 0 ? "Main image URL — paste link here" : "Image URL — paste link here"}
                   />
                   <label title="Upload from device"
-                    className="shrink-0 w-9 h-9 grid place-items-center rounded-xl border border-gray-200 text-[#1E40AF] hover:bg-[#1E40AF]/5 cursor-pointer transition-colors">
+                    className="shrink-0 w-9 h-9 grid place-items-center rounded-sm border border-gray-200 text-[#1E40AF] hover:bg-[#1E40AF]/5 cursor-pointer transition-colors">
                     {uploadIdx === i ? <span className="text-[10px] font-bold">…</span> : <Upload size={16} />}
                     <input type="file" accept="image/png,image/jpeg" className="hidden"
                       onChange={e => { handleUpload(i, e.target.files?.[0]); e.target.value = ""; }} />
                   </label>
                   {imgs.length > 1 && (
                     <button type="button" onClick={() => removeImg(i)} title="Remove image"
-                      className="shrink-0 w-9 h-9 grid place-items-center rounded-xl border border-gray-200 text-red-500 hover:bg-red-50 transition-colors">
+                      className="shrink-0 w-9 h-9 grid place-items-center rounded-sm border border-gray-200 text-red-500 hover:bg-red-50 transition-colors">
                       <Trash2 size={16} />
                     </button>
                   )}
@@ -3590,7 +3649,7 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
           {uploadErr && <p className="text-xs text-red-500 font-semibold mt-1.5">{uploadErr}</p>}
           {imgs.length < MAX_PRODUCT_IMAGES && (
             <button type="button" onClick={addImg}
-              className="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-[#1E40AF]/40 text-[#1E40AF] text-sm font-bold hover:bg-[#1E40AF]/5 transition-colors">
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-sm border border-dashed border-[#1E40AF]/40 text-[#1E40AF] text-sm font-bold hover:bg-[#1E40AF]/5 transition-colors">
               <Plus size={16} /> Add another image
             </button>
           )}
@@ -3602,9 +3661,61 @@ function ProductForm({ initial, onSave, onCancel, busy, allowBadge = true }: { i
       </div>
       {formErr && <p className="text-xs text-red-500 font-semibold mt-3">{formErr}</p>}
       <div className="flex gap-2 mt-4">
-        <button onClick={submit} disabled={busy} className="px-5 py-2.5 rounded-xl bg-[#1E40AF] text-white font-bold text-sm disabled:opacity-60">{busy ? "Saving…" : "Save Product"}</button>
-        <button onClick={onCancel} className="px-5 py-2.5 rounded-xl border border-gray-200 text-[#374151] font-bold text-sm">Cancel</button>
+        <button onClick={submit} disabled={busy} className="px-5 py-2.5 rounded-sm bg-[#1E40AF] text-white font-bold text-sm disabled:opacity-60">{busy ? "Saving…" : "Save Product"}</button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-sm border border-gray-200 text-[#374151] font-bold text-sm">Cancel</button>
       </div>
+    </div>
+  );
+}
+
+// Admin-only: upload/replace/remove the photo shown for one category on the
+// homepage's "Shop by Category" strip. Falls back to a product photo from
+// that category when no override has been set — see HomePage's catThumbs.
+function CategoryImageEditor({ category }: { category: string }) {
+  const { categoryImages, refreshCategoryImages } = useContext(Store);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const current = categoryImages[category];
+
+  const onUpload = async (file: File | undefined) => {
+    if (!file) return;
+    const verr = validateProofFile(file);
+    if (verr) { setErr(verr); return; }
+    setErr(""); setBusy(true);
+    try {
+      const dataUrl = await fileToCompressedDataURL(file, 600, 0.75);
+      await apiSetCategoryImage(category, dataUrl);
+      await refreshCategoryImages();
+    } catch {
+      setErr("Could not save that photo. Please try another file.");
+    }
+    setBusy(false);
+  };
+  const onRemove = async () => {
+    setErr(""); setBusy(true);
+    try { await apiDeleteCategoryImage(category); await refreshCategoryImages(); }
+    catch { setErr("Could not remove the photo."); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="w-9 h-9 rounded-full overflow-hidden bg-white border border-gray-200 flex items-center justify-center flex-shrink-0">
+        {current ? <img src={current} alt="" className="w-full h-full object-cover" /> : <ImageOff size={14} className="text-gray-300" />}
+      </div>
+      <label title="Upload a photo for this category's homepage icon"
+        className="px-2 py-1 rounded-sm text-[11px] font-bold text-[#1E40AF] bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer">
+        {busy ? "…" : current ? "Change photo" : "Upload photo"}
+        <input type="file" accept="image/png,image/jpeg" className="hidden" disabled={busy}
+          onChange={e => { onUpload(e.target.files?.[0]); e.target.value = ""; }} />
+      </label>
+      {current && (
+        <button onClick={onRemove} disabled={busy} title="Remove uploaded photo"
+          className="px-2 py-1 rounded-sm text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-60">
+          Remove
+        </button>
+      )}
+      {err && <span className="text-[11px] text-red-500 font-semibold">{err}</span>}
     </div>
   );
 }
@@ -3697,48 +3808,50 @@ function AdminProducts({ dbMode }: { dbMode: boolean }) {
 
   return (
     <div>
-      {!dbMode && <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">Read-only mode — the database API isn't connected, so changes can't be saved. Set <strong>DATABASE_URL</strong> and <strong>ADMIN_PASSWORD</strong> in Vercel and log in with the admin password to edit.</div>}
-      {(msg || err) && <div className={`mb-4 rounded-xl p-3 text-sm font-semibold ${err ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{err || msg}</div>}
+      {!dbMode && <div className="mb-4 rounded-sm bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">Read-only mode — the database API isn't connected, so changes can't be saved. Set <strong>DATABASE_URL</strong> and <strong>ADMIN_PASSWORD</strong> in Vercel and log in with the admin password to edit.</div>}
+      {(msg || err) && <div className={`mb-4 rounded-sm p-3 text-sm font-semibold ${err ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{err || msg}</div>}
 
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search product, store or city…"
-              className="w-64 max-w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
+              className="w-64 max-w-full pl-9 pr-3 py-2 rounded-sm border border-gray-200 bg-white text-sm outline-none focus:border-[#1E40AF]" />
           </div>
-          <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold outline-none focus:border-[#1E40AF]">
+          <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-2 rounded-sm border border-gray-200 bg-white text-sm font-semibold outline-none focus:border-[#1E40AF]">
             {cats.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className="flex gap-2">
-          {dbMode && <button onClick={() => setRenameOpen(o => !o)} className={`px-4 py-2 rounded-xl border text-sm font-bold transition-colors ${renameOpen ? "border-[#1E40AF] text-[#1E40AF] bg-blue-50" : "border-gray-200 text-[#374151] hover:border-[#1E40AF]"}`}>Edit categories</button>}
-          {dbMode && <button onClick={seed} disabled={busy} className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] disabled:opacity-60">Seed database</button>}
-          {dbMode && <button onClick={() => setEditing("new")} className="px-4 py-2 rounded-xl bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5"><Plus size={15} /> Add Product</button>}
+          {dbMode && <button onClick={() => setRenameOpen(o => !o)} className={`px-4 py-2 rounded-sm border text-sm font-bold transition-colors ${renameOpen ? "border-[#1E40AF] text-[#1E40AF] bg-blue-50" : "border-gray-200 text-[#374151] hover:border-[#1E40AF]"}`}>Edit categories</button>}
+          {dbMode && <button onClick={seed} disabled={busy} className="px-4 py-2 rounded-sm border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] disabled:opacity-60">Seed database</button>}
+          {dbMode && <button onClick={() => setEditing("new")} className="px-4 py-2 rounded-sm bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5"><Plus size={15} /> Add Product</button>}
         </div>
       </div>
 
       {/* Category / sub-category rename panel — admin fixes a badly named
           category a seller introduced, across every product at once. */}
       {renameOpen && dbMode && (
-        <div className="bg-white rounded-2xl p-5 mb-4" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <div className="bg-white rounded-sm p-5 mb-4 border border-gray-200">
           <p className="font-bold text-[#111827] text-sm mb-1">Rename or delete categories &amp; sub-categories</p>
-          <p className="text-xs text-[#6b7280] mb-4">Renaming changes it on <strong>every product</strong> that uses it — including sellers' products. Deleting removes the category <strong>and permanently deletes all of its products</strong>, so it always asks for confirmation first.</p>
+          <p className="text-xs text-[#6b7280] mb-4">Renaming changes it on <strong>every product</strong> that uses it — including sellers' products. Deleting removes the category <strong>and permanently deletes all of its products</strong>, so it always asks for confirmation first. The photo controls set the icon shown for that category on the homepage's "Shop by Category" row.</p>
           <div className="space-y-3">
             {Array.from(new Set(products.map(p => p.category))).filter(Boolean).map(cat => {
               const subs = Array.from(new Set(products.filter(p => p.category === cat).map(p => p.subcategory))).filter(Boolean);
               return (
-                <div key={cat} className="rounded-xl bg-[#F8F9FB] p-3">
+                <div key={cat} className="rounded-sm bg-[#F8F9FB] p-3">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="text-sm font-bold text-[#111827]">{cat}</span>
                     <button onClick={() => rename("category", cat)} title={`Rename "${cat}"`}
-                      className="px-2 py-1 rounded-lg text-[11px] font-bold text-[#1E40AF] bg-blue-50 hover:bg-blue-100 transition-colors">Rename</button>
+                      className="px-2 py-1 rounded-sm text-[11px] font-bold text-[#1E40AF] bg-blue-50 hover:bg-blue-100 transition-colors">Rename</button>
                     <button onClick={() => removeCategory("category", cat)} title={`Delete "${cat}" and all its products`}
-                      className="px-2 py-1 rounded-lg text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors">Delete</button>
+                      className="px-2 py-1 rounded-sm text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors">Delete</button>
+                    <span className="w-px h-5 bg-gray-200 mx-0.5" />
+                    <CategoryImageEditor category={cat} />
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {subs.map(s => (
-                      <span key={s} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-lg bg-white border border-gray-200 text-xs font-semibold text-[#374151]">
+                      <span key={s} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-sm bg-white border border-gray-200 text-xs font-semibold text-[#374151]">
                         {s}
                         <button onClick={() => rename("subcategory", s)} title={`Rename "${s}"`}
                           className="px-1.5 py-0.5 rounded text-[10px] font-bold text-[#1E40AF] hover:bg-blue-50 transition-colors">Rename</button>
@@ -3760,24 +3873,24 @@ function AdminProducts({ dbMode }: { dbMode: boolean }) {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="bg-white rounded-sm overflow-hidden border border-gray-200">
         {list.length === 0 ? (
           <div className="p-10 text-center text-sm text-[#6b7280]">No products in this category.</div>
         ) : list.map(p => (
           <div key={p.id} className="flex items-center gap-3 p-3 border-b border-gray-100 last:border-0">
-            <ProductImage src={p.image} alt="" className="w-12 h-12 rounded-lg object-cover bg-gray-50 flex-shrink-0" />
+            <ProductImage src={p.image} alt="" className="w-12 h-12 rounded-sm object-cover bg-gray-50 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-[#111827] truncate flex items-center gap-1.5">{p.name}{p.featured && <span className="inline-flex items-center gap-0.5 text-[10px] font-black text-[#F97316] bg-orange-50 px-1.5 py-0.5 rounded-full flex-shrink-0"><Star size={9} className="fill-[#F97316]" /> Featured</span>}</p>
               <p className="text-xs text-[#6b7280]">{p.category} · {p.subcategory} · {fmt(p.price)}{p.priceNote ? ` ${p.priceNote}` : ""}{!p.inStock && <span className="text-red-500 font-semibold"> · Out of stock</span>}{p.sellerStore ? ` · ${p.sellerStore}` : ""}{p.sellerCity ? ` (${p.sellerCity})` : ""}</p>
             </div>
             {dbMode && (
               <button onClick={() => toggleFeatured(p)} title={p.featured ? "Remove from featured" : "Feature this product"}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1 ${p.featured ? "text-[#F97316] bg-orange-50 hover:bg-orange-100" : "text-[#6b7280] hover:bg-gray-100"}`}>
+                className={`px-2.5 py-1.5 rounded-sm text-xs font-bold inline-flex items-center gap-1 ${p.featured ? "text-[#F97316] bg-orange-50 hover:bg-orange-100" : "text-[#6b7280] hover:bg-gray-100"}`}>
                 <Star size={13} className={p.featured ? "fill-[#F97316]" : ""} /> {p.featured ? "Featured" : "Feature"}
               </button>
             )}
-            {dbMode && <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#1E40AF] hover:bg-blue-50">Edit</button>}
-            {dbMode && <button onClick={() => remove(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50">Delete</button>}
+            {dbMode && <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-sm text-xs font-bold text-[#1E40AF] hover:bg-blue-50">Edit</button>}
+            {dbMode && <button onClick={() => remove(p)} className="px-3 py-1.5 rounded-sm text-xs font-bold text-red-500 hover:bg-red-50">Delete</button>}
           </div>
         ))}
       </div>
@@ -3800,14 +3913,14 @@ function SalesAnalyticsView({ data }: { data: SalesAnalytics }) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {cards.map(c => (
-          <div key={c.label} className="bg-white rounded-2xl p-4 border border-gray-100">
+          <div key={c.label} className="bg-white rounded-sm p-4 border border-gray-100">
             <p className="text-xl font-black" style={{ color: c.color }}>{c.value}</p>
             <p className="text-xs font-semibold text-[#111827] mt-0.5">{c.label}</p>
             <p className="text-[11px] text-[#6b7280]">{c.sub}</p>
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
+      <div className="bg-white rounded-sm overflow-hidden border border-gray-100">
         <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
           <TrendingUp size={15} className="text-[#1E40AF]" />
           <p className="text-sm font-bold text-[#111827]">Daily sales — last 30 days (Pakistan time)</p>
@@ -3837,7 +3950,7 @@ function SalesAnalyticsView({ data }: { data: SalesAnalytics }) {
 function DeleteSellerModal({ seller, busy, onCancel, onConfirm }: { seller: SellerSummary; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-white rounded-2xl p-6 max-w-md w-full" style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-sm p-6 max-w-md w-full" style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3 text-red-600">
           <Trash2 size={20} />
           <h3 className="font-black text-lg">Delete this seller?</h3>
@@ -3852,10 +3965,10 @@ function DeleteSellerModal({ seller, busy, onCancel, onConfirm }: { seller: Sell
           This cannot be undone.
         </p>
         <div className="flex gap-2">
-          <button onClick={onConfirm} disabled={busy} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold text-sm hover:bg-red-700 disabled:opacity-60 transition-colors">
+          <button onClick={onConfirm} disabled={busy} className="flex-1 py-2.5 rounded-sm bg-red-600 text-white font-bold text-sm hover:bg-red-700 disabled:opacity-60 transition-colors">
             {busy ? "Deleting…" : "Yes, delete everything"}
           </button>
-          <button onClick={onCancel} disabled={busy} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-[#374151] font-bold text-sm hover:bg-gray-50">
+          <button onClick={onCancel} disabled={busy} className="flex-1 py-2.5 rounded-sm border border-gray-200 text-[#374151] font-bold text-sm hover:bg-gray-50">
             Cancel
           </button>
         </div>
@@ -3913,25 +4026,25 @@ function AdminSellerRow({ seller, onChanged }: { seller: SellerSummary; onChange
         </div>
       </div>
       <div className="px-4 pb-3 flex flex-wrap gap-2">
-        <button onClick={toggle} className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#1E40AF] bg-blue-50 hover:bg-blue-100 inline-flex items-center gap-1">
+        <button onClick={toggle} className="px-3 py-1.5 rounded-sm text-xs font-bold text-[#1E40AF] bg-blue-50 hover:bg-blue-100 inline-flex items-center gap-1">
           <TrendingUp size={13} /> {open ? "Hide analytics" : "View analytics"}
         </button>
-        <button onClick={doResetEarnings} disabled={resetting} className="px-3 py-1.5 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 inline-flex items-center gap-1 disabled:opacity-60">
+        <button onClick={doResetEarnings} disabled={resetting} className="px-3 py-1.5 rounded-sm text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 inline-flex items-center gap-1 disabled:opacity-60">
           <RefreshCw size={13} /> {resetting ? "Resetting…" : "Reset earnings"}
         </button>
-        <button onClick={() => setConfirmDel(true)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 inline-flex items-center gap-1">
+        <button onClick={() => setConfirmDel(true)} className="px-3 py-1.5 rounded-sm text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 inline-flex items-center gap-1">
           <Trash2 size={13} /> Delete seller
         </button>
       </div>
       {open && (
         <div className="px-4 pb-5">
-          <div className="bg-gray-50 rounded-xl p-3 mb-3 flex flex-wrap items-end gap-3">
+          <div className="bg-gray-50 rounded-sm p-3 mb-3 flex flex-wrap items-end gap-3">
             <label className="text-xs font-semibold text-[#374151]">
               Earnings since a date
               <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-                className="block mt-1 px-2 py-1.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-[#1E40AF]" />
+                className="block mt-1 px-2 py-1.5 rounded-sm border border-gray-200 text-sm outline-none focus:border-[#1E40AF]" />
             </label>
-            <button onClick={() => loadDetail(from)} className="px-3 py-2 rounded-lg bg-[#1E40AF] text-white text-xs font-bold">Apply</button>
+            <button onClick={() => loadDetail(from)} className="px-3 py-2 rounded-sm bg-[#1E40AF] text-white text-xs font-bold">Apply</button>
             {detail?.analytics.since && (
               <div className="text-sm">
                 <span className="text-[#6b7280]">Since {fmtPKDate(new Date(`${detail.analytics.since.from}T00:00:00`).getTime())}: </span>
@@ -3957,8 +4070,8 @@ function AdminSellers() {
   const [loaded, setLoaded] = useState(false);
   const reload = () => adminGetSellers().then(setSellers).catch(e => setErr(e instanceof Error ? e.message : "Failed to load sellers")).finally(() => setLoaded(true));
   useEffect(() => { reload(); }, []);
-  if (err) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-red-500" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>{err}</div>;
-  if (!loaded) return <div className="bg-white rounded-2xl p-8 text-center text-sm text-[#6b7280]">Loading sellers…</div>;
+  if (err) return <div className="bg-white rounded-sm p-8 text-center text-sm text-red-500 border border-gray-200">{err}</div>;
+  if (!loaded) return <div className="bg-white rounded-sm p-8 text-center text-sm text-[#6b7280]">Loading sellers…</div>;
   const totalEarnings = sellers.reduce((s, x) => s + x.earnings, 0);
   const totalProducts = sellers.reduce((s, x) => s + x.productCount, 0);
   return (
@@ -3973,13 +4086,13 @@ function AdminSellers() {
           { label: "Seller Products", value: String(totalProducts) },
           { label: "Seller Earnings", value: fmt(totalEarnings) },
         ].map(c => (
-          <div key={c.label} className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+          <div key={c.label} className="bg-white rounded-sm p-4 border border-gray-200">
             <p className="text-2xl font-black text-[#1E40AF]">{c.value}</p>
             <p className="text-xs font-semibold text-[#6b7280] mt-0.5">{c.label}</p>
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="bg-white rounded-sm overflow-hidden border border-gray-200">
         {sellers.length === 0 ? (
           <div className="p-10 text-center text-sm text-[#6b7280]">No sellers have signed up yet.</div>
         ) : sellers.map(s => <AdminSellerRow key={s.id} seller={s} onChanged={reload} />)}
@@ -4010,21 +4123,21 @@ function AdminPage() {
 
   if (!isAdmin) return (
     <div className="max-w-sm mx-auto px-4 py-20">
-      <div className="bg-white rounded-2xl p-8 text-center" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
-        <div className="w-14 h-14 rounded-2xl bg-[#1E40AF] flex items-center justify-center mx-auto mb-4">
+      <div className="bg-white rounded-sm p-8 text-center border border-gray-200">
+        <div className="w-14 h-14 rounded-sm bg-[#1E40AF] flex items-center justify-center mx-auto mb-4">
           <Lock size={24} className="text-white" />
         </div>
         <h2 className="font-black text-xl text-[#111827] mb-1">Admin Access</h2>
         <p className="text-xs text-[#6b7280] mb-5">{user ? "This account is not an admin. Sign in with the admin email." : "Sign in with the admin email and password."}</p>
         <input type="email" value={form.email} autoFocus placeholder="Admin email"
           onChange={e => { setForm(f => ({ ...f, email: e.target.value })); setPassErr(""); }}
-          className="w-full px-4 py-3 rounded-xl border text-sm outline-none mb-2 border-gray-200 bg-gray-50 focus:border-[#1E40AF]" />
+          className="w-full px-4 py-3 rounded-sm border text-sm outline-none mb-2 border-gray-200 bg-gray-50 focus:border-[#1E40AF]" />
         <input type="password" value={form.password} placeholder="Password"
           onChange={e => { setForm(f => ({ ...f, password: e.target.value })); setPassErr(""); }}
           onKeyDown={e => e.key === "Enter" && doLogin()}
-          className={`w-full px-4 py-3 rounded-xl border text-sm outline-none mb-2 ${passErr ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
+          className={`w-full px-4 py-3 rounded-sm border text-sm outline-none mb-2 ${passErr ? "border-red-400 bg-red-50" : "border-gray-200 bg-gray-50 focus:border-[#1E40AF]"}`} />
         {passErr && <p className="text-xs text-red-500 mb-2">{passErr}</p>}
-        <button onClick={doLogin} disabled={busy} className="w-full py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm disabled:opacity-60">{busy ? "Checking…" : "Sign In"}</button>
+        <button onClick={doLogin} disabled={busy} className="w-full py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm disabled:opacity-60">{busy ? "Checking…" : "Sign In"}</button>
       </div>
     </div>
   );
@@ -4041,7 +4154,7 @@ function AdminPage() {
           </h1>
           <p className="text-sm text-[#6b7280] mt-0.5">{dbMode ? "Connected to the database." : "Read-only — database not connected."}</p>
         </div>
-        <button onClick={() => logout()} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
+        <button onClick={() => logout()} className="flex items-center gap-2 px-4 py-2.5 rounded-sm bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
           <Lock size={15} /> Log out
         </button>
       </div>
@@ -4147,8 +4260,8 @@ function SellerPage() {
     <div className="max-w-md mx-auto px-4 py-20 text-center">
       <User size={56} className="mx-auto text-gray-300 mb-4" />
       <h2 className="font-black text-xl text-[#111827] mb-2">Sign in to your seller account</h2>
-      <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm mr-3">Sign In</button>
-      <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-xl font-bold text-sm">Register</button>
+      <button onClick={() => navigate("/login")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm mr-3">Sign In</button>
+      <button onClick={() => navigate("/register")} className="px-6 py-3 border border-[#1E40AF] text-[#1E40AF] rounded-sm font-bold text-sm">Register</button>
     </div>
   );
   if (user.role !== "seller" && user.role !== "admin") return (
@@ -4156,7 +4269,7 @@ function SellerPage() {
       <Package size={56} className="mx-auto text-gray-300 mb-4" />
       <h2 className="font-black text-xl text-[#111827] mb-2">Become a seller</h2>
       <p className="text-sm text-[#6b7280] mb-6">Switch your account to a seller in your profile to list products.</p>
-      <button onClick={() => navigate("/account")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-xl font-bold text-sm">Go to Profile</button>
+      <button onClick={() => navigate("/account")} className="px-6 py-3 bg-[#1E40AF] text-white rounded-sm font-bold text-sm">Go to Profile</button>
     </div>
   );
 
@@ -4185,17 +4298,17 @@ function SellerPage() {
           </h1>
           <p className="text-sm text-[#6b7280] mt-0.5">Manage the products in your store.</p>
         </div>
-        <button onClick={() => setEditing("new")} className="px-4 py-2.5 rounded-xl bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5">
+        <button onClick={() => setEditing("new")} className="px-4 py-2.5 rounded-sm bg-[#1E40AF] text-white text-sm font-bold flex items-center gap-1.5">
           <Plus size={15} /> Add Product
         </button>
       </div>
 
       <div className="grid sm:grid-cols-3 gap-3 mb-6">
-        <div className="bg-white rounded-2xl p-4" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <div className="bg-white rounded-sm p-4 border border-gray-200">
           <p className="text-2xl font-black text-[#1E40AF]">{products.length}</p>
           <p className="text-xs font-semibold text-[#6b7280]">Your Products</p>
         </div>
-        <div className="bg-white rounded-2xl p-4 sm:col-span-2 text-sm" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <div className="bg-white rounded-sm p-4 sm:col-span-2 text-sm border border-gray-200">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs font-bold text-[#6b7280] uppercase tracking-wide">Store contact (used at checkout)</p>
             <button onClick={openStoreEdit} className="text-xs font-bold text-[#1E40AF] hover:underline">Edit</button>
@@ -4218,26 +4331,26 @@ function SellerPage() {
           <div className="flex items-center gap-2">
             <PakistanClock />
             <button onClick={resetEarnings} disabled={resetBusy} title="Permanently reset your all-time earnings to zero"
-              className="text-xs font-bold px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors disabled:opacity-60">
+              className="text-xs font-bold px-3 py-1.5 rounded-sm border border-red-200 text-red-500 hover:bg-red-50 transition-colors disabled:opacity-60">
               {resetBusy ? "Working…" : "Reset Earnings"}
             </button>
           </div>
         </div>
         {analytics
           ? <SalesAnalyticsView data={analytics} />
-          : <div className="bg-white rounded-2xl p-6 text-center text-sm text-[#6b7280] border border-gray-100">Loading your sales…</div>}
+          : <div className="bg-white rounded-sm p-6 text-center text-sm text-[#6b7280] border border-gray-100">Loading your sales…</div>}
       </div>
 
       {/* Your orders — approve, mark payment received, ship, deliver or cancel */}
       <div className="mb-6">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <h2 className="font-black text-[#111827] flex items-center gap-2"><Truck size={18} className="text-[#1E40AF]" /> Your orders</h2>
-          <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
+          <button onClick={loadOrders} className="flex items-center gap-2 px-4 py-2 rounded-sm bg-white border border-gray-200 text-sm font-bold text-[#374151] hover:border-[#1E40AF] transition-colors">
             <RefreshCw size={15} /> Refresh
           </button>
         </div>
         {activeOrders.length === 0 ? (
-          <div className="bg-white rounded-2xl p-10 text-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+          <div className="bg-white rounded-sm p-10 text-center border border-gray-200">
             <Package size={44} className="mx-auto text-gray-300 mb-3" />
             <p className="font-bold text-[#111827] mb-1">No active orders</p>
             <p className="text-sm text-[#6b7280]">Orders placed for your products will appear here.</p>
@@ -4253,10 +4366,9 @@ function SellerPage() {
           their own page, so this dashboard doesn't fill up with completed cards. */}
       {deliveredCount > 0 && (
         <Link to="/seller/delivered"
-          className="mb-6 flex items-center justify-between gap-3 bg-white rounded-2xl p-4 hover:-translate-y-0.5 transition-transform"
-          style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+          className="mb-6 flex items-center justify-between gap-3 bg-white rounded-sm p-4 hover:-translate-y-0.5 transition-transform border border-gray-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#ECFDF5] grid place-items-center flex-shrink-0"><CheckCircle size={18} className="text-[#059669]" /></div>
+            <div className="w-10 h-10 rounded-sm bg-[#ECFDF5] grid place-items-center flex-shrink-0"><CheckCircle size={18} className="text-[#059669]" /></div>
             <div>
               <p className="font-bold text-[#111827] text-sm">Delivered Orders</p>
               <p className="text-xs text-[#6b7280]">{deliveredCount} order{deliveredCount === 1 ? "" : "s"} · view, download as PDF, or clear</p>
@@ -4267,22 +4379,22 @@ function SellerPage() {
       )}
 
       {storeOpen && (
-        <div className="bg-white rounded-2xl p-5 mb-6" style={{ boxShadow: "0 8px 32px rgba(30,64,175,0.12)" }}>
+        <div className="bg-white rounded-sm p-5 mb-6 border border-gray-200">
           <p className="font-bold text-[#111827] mb-1">Edit store details</p>
           <p className="text-xs text-[#6b7280] mb-4">Buyers check out and contact you on this WhatsApp; payments go to this account.</p>
           <div className="grid sm:grid-cols-2 gap-3">
-            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Store Name *</span><input className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.storeName} onChange={e => setStoreForm(f => ({ ...f, storeName: e.target.value }))} /></label>
-            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Store WhatsApp *</span><input className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.whatsapp} onChange={e => setStoreForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="03001234567" /></label>
-            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">City *</span><input className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.city} onChange={e => setStoreForm(f => ({ ...f, city: e.target.value }))} placeholder="e.g. Multan" /></label>
+            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Store Name *</span><input className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.storeName} onChange={e => setStoreForm(f => ({ ...f, storeName: e.target.value }))} /></label>
+            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Store WhatsApp *</span><input className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.whatsapp} onChange={e => setStoreForm(f => ({ ...f, whatsapp: e.target.value }))} placeholder="03001234567" /></label>
+            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">City *</span><input className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.city} onChange={e => setStoreForm(f => ({ ...f, city: e.target.value }))} placeholder="e.g. Multan" /></label>
             <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">Payment Method</span>
-              <select className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.accountType} onChange={e => setStoreForm(f => ({ ...f, accountType: e.target.value as AccountType }))}>
+              <select className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.accountType} onChange={e => setStoreForm(f => ({ ...f, accountType: e.target.value as AccountType }))}>
                 {ACCOUNT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </label>
-            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">{storeForm.accountType} Number</span><input className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.accountNumber} onChange={e => setStoreForm(f => ({ ...f, accountNumber: e.target.value }))} placeholder="03001234567" /></label>
-            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">{storeForm.accountType} Title</span><input className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.accountTitle} onChange={e => setStoreForm(f => ({ ...f, accountTitle: e.target.value }))} placeholder="Account holder name" /></label>
+            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">{storeForm.accountType} Number</span><input className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.accountNumber} onChange={e => setStoreForm(f => ({ ...f, accountNumber: e.target.value }))} placeholder="03001234567" /></label>
+            <label className="text-sm"><span className="font-semibold text-[#374151] block mb-1">{storeForm.accountType} Title</span><input className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.accountTitle} onChange={e => setStoreForm(f => ({ ...f, accountTitle: e.target.value }))} placeholder="Account holder name" /></label>
             <label className="text-sm sm:col-span-2"><span className="font-semibold text-[#374151] block mb-1">Checkout options for buyers</span>
-              <select className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.paymentMethods} onChange={e => setStoreForm(f => ({ ...f, paymentMethods: e.target.value as PaymentMethods }))}>
+              <select className="w-full px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" value={storeForm.paymentMethods} onChange={e => setStoreForm(f => ({ ...f, paymentMethods: e.target.value as PaymentMethods }))}>
                 <option value="both">Online payment + Cash on Delivery (both)</option>
                 <option value="online">Online payment only</option>
                 <option value="cod">Cash on Delivery only</option>
@@ -4292,13 +4404,13 @@ function SellerPage() {
           </div>
           {storeMsg && <p className="text-xs text-red-500 font-semibold mt-2">{storeMsg}</p>}
           <div className="flex gap-2 mt-4">
-            <button onClick={saveStore} disabled={storeBusy} className="px-5 py-2.5 rounded-xl bg-[#1E40AF] text-white font-bold text-sm disabled:opacity-60">{storeBusy ? "Saving…" : "Save store details"}</button>
-            <button onClick={() => setStoreOpen(false)} className="px-5 py-2.5 rounded-xl border border-gray-200 text-[#374151] font-bold text-sm">Cancel</button>
+            <button onClick={saveStore} disabled={storeBusy} className="px-5 py-2.5 rounded-sm bg-[#1E40AF] text-white font-bold text-sm disabled:opacity-60">{storeBusy ? "Saving…" : "Save store details"}</button>
+            <button onClick={() => setStoreOpen(false)} className="px-5 py-2.5 rounded-sm border border-gray-200 text-[#374151] font-bold text-sm">Cancel</button>
           </div>
         </div>
       )}
 
-      {(msg || err) && <div className={`mb-4 rounded-xl p-3 text-sm font-semibold ${err ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{err || msg}</div>}
+      {(msg || err) && <div className={`mb-4 rounded-sm p-3 text-sm font-semibold ${err ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-700"}`}>{err || msg}</div>}
 
       {editing !== null && (
         <div ref={formRef}>
@@ -4307,7 +4419,7 @@ function SellerPage() {
       )}
 
       {/* Bulk delivery charge — your choice */}
-      <div className="bg-white rounded-2xl p-4 mb-4" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="bg-white rounded-sm p-4 mb-4 border border-gray-200">
         <div className="flex items-center gap-2 mb-1">
           <Truck size={16} className="text-[#1E40AF]" />
           <p className="font-bold text-[#111827] text-sm">Delivery charges (your choice)</p>
@@ -4315,25 +4427,25 @@ function SellerPage() {
         <p className="text-xs text-[#6b7280] mb-3">Set one charge for <strong>all</strong> your products at once below, or set a specific charge per product when you add or edit it. Leave blank to use the Ahmad Mart default (Rs. {DELIVERY_FEE}).</p>
         <div className="flex flex-wrap items-center gap-2">
           <input type="number" value={bulkDelivery} onChange={e => setBulkDelivery(e.target.value)} placeholder={`Rs. (e.g. ${DELIVERY_FEE})`}
-            className="w-44 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
+            className="w-44 px-3 py-2 rounded-sm border border-gray-200 bg-gray-50 text-sm outline-none focus:border-[#1E40AF]" />
           <button onClick={applyBulkDelivery} disabled={bulkBusy}
-            className="px-4 py-2 rounded-xl bg-[#1E40AF] text-white text-sm font-bold disabled:opacity-60">{bulkBusy ? "Applying…" : "Apply to all my products"}</button>
+            className="px-4 py-2 rounded-sm bg-[#1E40AF] text-white text-sm font-bold disabled:opacity-60">{bulkBusy ? "Applying…" : "Apply to all my products"}</button>
           {bulkMsg && <span className="text-xs font-semibold text-emerald-600">{bulkMsg}</span>}
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+      <div className="bg-white rounded-sm overflow-hidden border border-gray-200">
         {products.length === 0 ? (
           <div className="p-10 text-center text-sm text-[#6b7280]">You haven't added any products yet. Click <strong>Add Product</strong> to start.</div>
         ) : products.map(p => (
           <div key={p.id} className="flex items-center gap-3 p-3 border-b border-gray-100 last:border-0">
-            <ProductImage src={p.image} alt="" className="w-12 h-12 rounded-lg object-cover bg-gray-50 flex-shrink-0" />
+            <ProductImage src={p.image} alt="" className="w-12 h-12 rounded-sm object-cover bg-gray-50 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-[#111827] truncate">{p.name}</p>
               <p className="text-xs text-[#6b7280]">{p.category} · {p.subcategory} · {fmt(p.price)} · Delivery {fmt(p.deliveryCharge ?? DELIVERY_FEE)}{!p.inStock && <span className="text-red-500 font-semibold"> · Out of stock</span>}</p>
             </div>
-            <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#1E40AF] hover:bg-blue-50">Edit</button>
-            <button onClick={() => remove(p)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-50">Delete</button>
+            <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-sm text-xs font-bold text-[#1E40AF] hover:bg-blue-50">Edit</button>
+            <button onClick={() => remove(p)} className="px-3 py-1.5 rounded-sm text-xs font-bold text-red-500 hover:bg-red-50">Delete</button>
           </div>
         ))}
       </div>
@@ -4389,26 +4501,26 @@ function SellerDeliveredOrders() {
           <p className="text-sm text-[#6b7280] mt-0.5">{delivered.length} order{delivered.length === 1 ? "" : "s"} · {fmt(total)} total</p>
         </div>
         <button onClick={clearHistory} disabled={clearBusy || delivered.length === 0}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#1E40AF] text-white text-sm font-bold disabled:opacity-60">
+          className="flex items-center gap-2 px-4 py-2.5 rounded-sm bg-[#1E40AF] text-white text-sm font-bold disabled:opacity-60">
           <Download size={15} /> {clearBusy ? "Working…" : "Download PDF & Clear"}
         </button>
       </div>
 
       {delivered.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 mb-5 text-xs text-amber-800">
+        <div className="flex items-start gap-2 rounded-sm border border-amber-200 bg-amber-50 p-3 mb-5 text-xs text-amber-800">
           <ShieldCheck size={15} className="flex-shrink-0 mt-0.5" />
           <span>Downloading will permanently remove your all-time earnings and this order history — the PDF (with full order and customer details) becomes your only record. This cannot be undone.</span>
         </div>
       )}
 
       {delivered.length === 0 ? (
-        <div className="bg-white rounded-2xl p-16 text-center" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <div className="bg-white rounded-sm p-16 text-center border border-gray-200">
           <Package size={56} className="mx-auto text-gray-300 mb-4" />
           <p className="font-bold text-[#111827] mb-1">No delivered orders yet</p>
           <p className="text-sm text-[#6b7280]">Orders you mark Delivered will show up here.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl overflow-hidden" style={{ boxShadow: "0 4px 16px rgba(30,64,175,0.07)" }}>
+        <div className="bg-white rounded-sm overflow-hidden border border-gray-200">
           {delivered.map(o => (
             <div key={o.id} className="flex flex-wrap items-center gap-3 p-3 border-b border-gray-100 last:border-0 text-sm">
               <div className="w-24 flex-shrink-0">
@@ -4423,7 +4535,7 @@ function SellerDeliveredOrders() {
               <div className="flex-1 min-w-[140px] text-[#6b7280] truncate">{o.items.map(it => `${it.name} ×${it.qty}`).join(", ")}</div>
               <div className="w-20 flex-shrink-0 text-right font-bold text-[#111827]">{fmt(o.total)}</div>
               <select value={o.status} onChange={e => setOrderStatus(o.id, e.target.value as OrderStatus)}
-                className="flex-shrink-0 text-xs font-bold px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 outline-none focus:border-[#1E40AF]">
+                className="flex-shrink-0 text-xs font-bold px-2 py-1.5 rounded-sm border border-gray-200 bg-gray-50 outline-none focus:border-[#1E40AF]">
                 {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>

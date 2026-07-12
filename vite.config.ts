@@ -33,4 +33,17 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  // Local dev only: forward /api/* to a `vercel dev` instance running the real
+  // serverless functions against the Neon database. Running plain `vite` here
+  // (rather than `vercel dev` itself) avoids vercel.json's SPA rewrite
+  // (`/((?!api/).*) -> /index.html`) swallowing Vite-internal requests like
+  // /@vite/client and /@react-refresh, which aren't real files on disk and so
+  // don't survive vercel dev's filesystem-first routing check — that was
+  // breaking every module load and left the page blank.
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3210',
+    },
+  },
 })

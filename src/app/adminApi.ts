@@ -70,3 +70,24 @@ export async function fetchAnalytics(): Promise<Analytics> {
 export async function seedProducts(products: Product[], force = false): Promise<{ seeded: number; skipped?: boolean; message?: string }> {
   return (await send("/api/admin/seed", "POST", { products, force })) as { seeded: number };
 }
+
+/** Public: every category that has an admin-uploaded photo, as lazy image URLs.
+ *  Categories with no override just aren't in the map — callers fall back to
+ *  a product photo from that category. */
+export async function fetchCategoryImages(): Promise<Record<string, string>> {
+  const res = await fetch("/api/category-images", { cache: "no-store" });
+  if (!res.ok) return {};
+  const data = (await res.json()) as { images: Record<string, string> };
+  return data.images || {};
+}
+
+/** Admin: upload/replace the photo shown for a category on the homepage's
+ *  "Shop by Category" strip. */
+export async function setCategoryImage(category: string, imageDataUrl: string): Promise<void> {
+  await send(`/api/category-image?cat=${encodeURIComponent(category)}`, "PUT", { image: imageDataUrl });
+}
+
+/** Admin: remove a category's uploaded photo (reverts to the product-photo fallback). */
+export async function deleteCategoryImage(category: string): Promise<void> {
+  await send(`/api/category-image?cat=${encodeURIComponent(category)}`, "DELETE");
+}

@@ -126,3 +126,12 @@ create table if not exists messages (
 );
 create index if not exists messages_thread_idx    on messages (product_id, buyer_id, seller_id, created_at);
 create index if not exists messages_recipient_idx on messages (buyer_id, seller_id);
+
+-- ─── Category photos (admin-curated) ──────────────────────────────────────────
+-- The homepage's "Shop by Category" strip uses these when set; a category with
+-- no row here just falls back to a product photo from that category.
+create table if not exists category_images (
+  category   text primary key,
+  image      text not null,
+  updated_at timestamptz not null default now()
+);
