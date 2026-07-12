@@ -844,7 +844,7 @@ function Navbar() {
               <div key={g} className="flex shrink-0" aria-hidden={g === 1}>
                 {[0, 1, 2, 3].map(i => (
                   <span key={i} className="px-10 text-xs sm:text-sm font-semibold whitespace-nowrap">
-                    🛍️ Sell your products on Ahmad Mart with <span className="text-[#F97316] font-bold">0% commission</span> — start selling today
+                    Sell your products on Ahmad Mart with <span className="text-[#F97316] font-bold">0% commission</span> — start selling today
                   </span>
                 ))}
               </div>
