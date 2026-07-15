@@ -1966,7 +1966,7 @@ function ProductDetailPage() {
 
         {/* Info */}
         <div>
-          <p className="text-sm font-semibold text-[#F97316] mb-2">{product.subcategory}</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-[#F97316] mb-2">{product.subcategory}</p>
           <h1 className="text-2xl sm:text-3xl font-black text-[#111827] mb-3 leading-tight tracking-tight break-words">{product.name}</h1>
           {product.sellerStore && (
             <div className="mb-3">
